@@ -7,7 +7,7 @@ from collections import deque
 
 #que
 message_queue = asyncio.Queue()
-processed_messages = deque(maxlen=100)
+processed_messages = deque(maxlen=200)
 
 #discord
 intents = discord.Intents.default()
@@ -26,9 +26,9 @@ async def string_comp(name, wear, price):
         else:
             comp_name = str(name).strip().lower()
         similarity = buff_skin_name.apply(lambda x: jellyfish.jaro_winkler_similarity(comp_name, x))
-        idx = (similarity > 0.98).idxmax()
+        idx = (similarity == 1).idxmax()
 
-        if similarity[idx] > 0.98:
+        if similarity[idx] == 1:
             num = float(df.loc[idx, 'col3'])
             buffprice = num / 6.91
             price = float(price)
@@ -77,8 +77,20 @@ async def send_latest_offers():
                                     processed_messages.append(info[3])
                                     print(info)                    
 
+            await asyncio.sleep(0.1)    
 
-            await asyncio.sleep(0.1)     
+            #skinbaron
+            with open("skinbaron.txt", "r", encoding="utf-8") as skinbaron:
+                for skinbaron_row in skinbaron.read().split('\n'):
+                    skinbaron_row = str(skinbaron_row).split(";")
+                    if len(skinbaron_row) > 2:
+                        info = skinbaron_row
+                        if info[3] not in processed_messages:
+                            discount = await string_comp(skinbaron_row[0],"",skinbaron_row[2])
+                            if discount is not None and discount[0] != -1:                            
+                                    await message_queue.put((info, discount))  
+                                    processed_messages.append(info[3])
+                                    print(info)  
                       
         except Exception as e:
             print("send_latest_offers: ",e)
@@ -115,6 +127,8 @@ async def send_message(info,discount):
             icon_url = "https://i.imgur.com/NH7KSXK.png"
         elif info[5] == "Dmarket":
             icon_url = "https://i.imgur.com/fs5rPrI.png"
+        elif info[5] == "SkinBaron":
+            icon_url = "https://i.imgur.com/iYBDKfj.png"
 
         embed.set_footer(text=info[5],icon_url= icon_url)
 

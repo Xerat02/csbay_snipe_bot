@@ -18,13 +18,16 @@ client = discord.Client(intents=intents)
 
 async def string_comp(name, wear, price):
     try:
+        name = str(name).lower()
+        wear = str(wear).lower()
+
         df = pd.read_csv('demo.csv', delimiter=';', header=None, names=['col1', 'col2', 'col3'], encoding='utf-8')
 
-        buff_skin_name = df['col2'].str.strip().str.replace("|", "").str.replace("  ", " ").str.lower()
+        buff_skin_name = str(df['col2']).lower().strip().replace("|", "").replace("  ", " ")
         if wear != "":
-            comp_name = (str(name).strip().lower() + " " + str(wear).strip().lower()).strip()
+            comp_name = (name + " " + wear).strip()
         else:
-            comp_name = str(name).strip().lower()
+            comp_name = name
         similarity = buff_skin_name.apply(lambda x: jellyfish.jaro_winkler_similarity(comp_name, x))
         idx = (similarity == 1).idxmax()
 
@@ -118,7 +121,7 @@ async def send_message(info,discount):
         if not info or not discount:
             return
         
-        channel = [client.get_channel(1104867182871056455),client.get_channel(1104867279512023190),client.get_channel(1104867324730818570)]
+        channel = [client.get_channel(110486718271056455),client.get_channel(110486779512023190),client.get_channel(110486324730818570)]
         desc = "**Wear: **"+info[1]+"\n"+"**Market price: **$"+str(round(float(info[2]),2))+"\n**Buff price: **$"+str(discount[1])+"**\nDiscount: **"+str(discount[0])+"%"       
         embed = discord.Embed(title=info[0], description=desc, url=info[3])
         embed.set_thumbnail(url=info[4])

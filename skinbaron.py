@@ -1,6 +1,7 @@
 import asyncio
 import requests
 import json
+import time
 
 previous_skins = set()
 current_skins = set()
@@ -49,7 +50,7 @@ async def main():
         except Exception as e:
             print("Error occurred during scraping:", e)
         finally:
-            await asyncio.sleep(15)
+            time.sleep(15)
 
 
 asyncio.run(main())

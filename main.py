@@ -1,6 +1,5 @@
 import discord
-import jellyfish
-import pandas as pd
+import mysql.connector
 import asyncio
 from collections import deque
 
@@ -15,36 +14,59 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 
-
 async def string_comp(name, wear, price):
     try:
         name = str(name).lower()
         wear = str(wear).lower()
 
-        df = pd.read_csv('demo.csv', delimiter=';', header=None, names=['col1', 'col2', 'col3'], encoding='utf-8')
-
-        buff_skin_name = str(df['col2']).lower().strip().replace("|", "").replace("  ", " ")
-        if wear != "":
+        db_connection = mysql.connector.connect(
+            host='localhost',
+            port=3306,
+            user='user',
+            password='Buldozer4563',
+            database='csbay'
+        )
+        if wear:
             comp_name = (name + " " + wear).strip()
         else:
             comp_name = name
-        similarity = buff_skin_name.apply(lambda x: jellyfish.jaro_winkler_similarity(comp_name, x))
-        idx = (similarity == 1).idxmax()
+        
+        query = "SELECT id, market_hash_name, price_in_usd FROM buff_skins WHERE market_hash_name = %s LIMIT 1;"
+        cursor = db_connection.cursor()
+        cursor.execute(query, (comp_name,))
+        data = cursor.fetchall()
+        cursor.close()
+        db_connection.close()
 
-        if similarity[idx] == 1:
-            num = float(df.loc[idx, 'col3'])
-            buffprice = num / 6.91
-            price = float(price)
+        for row in data:
+            buff_id = row[0]
+            buff_name = str(row[1]).lower().strip()
+            buff_price = row[2]
 
-            if price < num / 6.91:
-                discount = (((num / 6.91) - price) / price) * 100
-                return [round(discount), round(buffprice, 2)]
-        else:
-            return [-1, 0]
+            
 
-    except:
-        return [-1, 0]
-    
+            if comp_name == buff_name:
+                num = float(buff_price)
+                price = float(price)
+
+                #print("comp_name: "+comp_name)
+                #print("buff_name: "+buff_name)
+                 
+
+                if price < num:
+                    #print("comp_price: "+str(price)) 
+                    #print("buff_price: "+str(num))
+
+                    discount = (((num) - price) / price) * 100
+                    profit = ((num * 0.975) - price)
+                    if discount > 1 and profit > 0.1:
+                        buff_link = "https://buff.163.com/goods/" + str(buff_id)
+                        return [round(discount, 1), round(num, 2), round(profit, 2), buff_link]
+                    else:
+                        return None
+    except Exception as e:
+        print("Error:", e)
+        return None
 
 
 async def send_latest_offers():
@@ -59,14 +81,15 @@ async def send_latest_offers():
                     if len(skinport_row) > 2:
                         info = skinport_row
                         if info[3] not in processed_messages:
-                            discount = await string_comp(skinport_row[0], skinport_row[1], skinport_row[2])
-                            if discount is not None and discount[0] != -1:
-                                    await message_queue.put((info, discount))
-                                    processed_messages.append(info[3])  
-                                    print(info)
+                            if float(skinport_row[2]) > 0.3:
+                                discount = await string_comp(skinport_row[0], skinport_row[1], skinport_row[2])
+                                if discount is not None and discount[0] != None:
+                                        await message_queue.put((info, discount))
+                                        processed_messages.append(info[3])  
+                                        print(info)
 
             await asyncio.sleep(0.1)
-
+            
             #dmarket
             with open("dmarket.txt", "r", encoding="utf-8") as dmarket:
                 for dmarket_row in dmarket.read().split('\n'):
@@ -74,13 +97,14 @@ async def send_latest_offers():
                     if len(dmarket_row) > 2:
                         info = dmarket_row
                         if info[3] not in processed_messages:
-                            discount = await string_comp(dmarket_row[0],"",dmarket_row[2])
-                            if discount is not None and discount[0] != -1:                            
-                                    await message_queue.put((info, discount))  
-                                    processed_messages.append(info[3])
-                                    print(info)                    
-
-            await asyncio.sleep(0.1)    
+                            if float(dmarket_row[2]) > 0.3:
+                                discount = await string_comp(dmarket_row[0],dmarket_row[1],dmarket_row[2])
+                                if discount is not None and discount[0] != None:                           
+                                        await message_queue.put((info, discount))  
+                                        processed_messages.append(info[3])
+                                        print(info)                    
+    
+            await asyncio.sleep(0.1)
 
             #skinbaron
             with open("skinbaron.txt", "r", encoding="utf-8") as skinbaron:
@@ -89,11 +113,12 @@ async def send_latest_offers():
                     if len(skinbaron_row) > 2:
                         info = skinbaron_row
                         if info[3] not in processed_messages:
-                            discount = await string_comp(skinbaron_row[0],"",skinbaron_row[2])
-                            if discount is not None and discount[0] != -1:                            
-                                    await message_queue.put((info, discount))  
-                                    processed_messages.append(info[3])
-                                    print(info)  
+                            if float(skinbaron_row[2]) > 0.3:
+                                discount = await string_comp(skinbaron_row[0],skinbaron_row[1],skinbaron_row[2])
+                                if discount is not None and discount[0] != None:                            
+                                        await message_queue.put((info, discount))  
+                                        processed_messages.append(info[3])
+                                        print(info)  
                       
         except Exception as e:
             print("send_latest_offers: ",e)
@@ -112,7 +137,7 @@ async def send_message_worker():
                     print("send_message_worker: ", e)
                 finally:
                     message_queue.task_done()
-        await asyncio.sleep(0.6)
+        await asyncio.sleep(0.4)
 
 
 
@@ -121,8 +146,8 @@ async def send_message(info,discount):
         if not info or not discount:
             return
         
-        channel = [client.get_channel(110486718271056455),client.get_channel(110486779512023190),client.get_channel(110486324730818570)]
-        desc = "**Wear: **"+info[1]+"\n"+"**Market price: **$"+str(round(float(info[2]),2))+"\n**Buff price: **$"+str(discount[1])+"**\nDiscount: **"+str(discount[0])+"%"       
+        channel = [client.get_channel(1104867182871056455),client.get_channel(1104867279512023190),client.get_channel(1104867324730818570)]
+        desc = "**Wear: **"+info[1]+"\n"+"**Market price: **$"+str(round(float(info[2]),2))+"\n**Buff price: **$"+str(discount[1])+"**\nPotencial profit: **$"+str(discount[2])+" (Buff fee included)**\nDiscount: **"+str(discount[0])+"%"       
         embed = discord.Embed(title=info[0], description=desc, url=info[3])
         embed.set_thumbnail(url=info[4])
 
@@ -135,9 +160,11 @@ async def send_message(info,discount):
 
         embed.set_footer(text=info[5],icon_url= icon_url)
 
-        button = discord.ui.Button(label="Check it",style=discord.ButtonStyle.url,url=info[3])
+        market_button = discord.ui.Button(label="Check it",style=discord.ButtonStyle.url,url=info[3])
+        buff_button = discord.ui.Button(label="Buff price",style=discord.ButtonStyle.url,url=discount[3])
         view = discord.ui.View()
-        view.add_item(button)
+        view.add_item(market_button)
+        view.add_item(buff_button)
 
         if float(info[2]) <= 10:
             embed.colour = discord.Colour(65482)
@@ -150,6 +177,7 @@ async def send_message(info,discount):
             await channel[2].send(embed=embed, view=view)
     except Exception as e:
         print("send_message: ",e)
+        return
 
 
 

@@ -1,1 +1,0 @@
-# csbay_snipe_bot

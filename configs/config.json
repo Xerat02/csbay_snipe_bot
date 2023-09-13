@@ -1,0 +1,63 @@
+{
+    "database":{
+        "host":"localhost",
+        "port":3306,
+        "user":"user",
+        "password":"Buldozer4563",
+        "db":"csbay",
+        "minsize":7,
+        "maxsize":20
+    },
+    "main":{
+        "discord_client_token":"MTEwNDg3MTkxNjk0MDA1MDU0Mg.GM75CV.6WPwQaiAQTUxeVAXpWIsRgikVQHFIJ8UJ7CdSQ",
+        "message_send_delay":0.04,
+        "offers_check_delay":0.01,
+        "temp_files_location":"tempFiles",
+        "risk_ranges":[
+            3.5,
+            7,
+            11.5
+        ],
+        "files":[
+            "skinport.txt", 
+            "dmarket.txt", 
+            "waxpeer.txt", 
+            "skinbaron.txt", 
+            "csgofloat.txt",  
+            "skinwallet.txt", 
+            "mannco.txt",
+            "marketcsgo.txt"
+        ],
+        "icons_urls": {
+            "Skinport": "https://i.imgur.com/NH7KSXK.png",
+            "Dmarket": "https://i.imgur.com/fs5rPrI.png",
+            "SkinBaron": "https://i.imgur.com/iYBDKfj.png",
+            "CSGOfloat": "https://i.imgur.com/Hbm7TOG.png",
+            "Bitskins": "https://i.imgur.com/DXElwaQ.jpg",
+            "Skinwallet": "https://i.imgur.com/tNl53Ni.png",
+            "Mannco":"https://i.imgur.com/3weGAh2.png",
+            "Waxpeer":"https://i.imgur.com/WWSVI1C.png",
+            "Marketcsgo":"https://i.imgur.com/HFbrqsZ.png"
+        },
+        "stat_channels_id":[
+            1144777265574576198
+        ],
+        "snipe_channels_id":[
+            1104867182871056455,
+            1104867279512023190,
+            1104867324730818570,
+            1142518314141233216
+        ],
+        "message_colors":[
+            248200,
+            5472231,
+            15269988,
+            13671674
+        ],
+        "price_ranges":[
+            10,
+            100,
+            2
+        ]
+    }
+}

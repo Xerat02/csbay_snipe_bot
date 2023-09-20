@@ -140,17 +140,17 @@ async def send_message_worker():
         await asyncio.sleep(cfg["main"]["message_send_delay"])
 
 
-async def update_statistics(market_name, discount, profit):
+async def update_statistics(market_name, discount, profit, message_url):
     db_connection = await get_db_connection() 
     cursor = await db_connection.cursor()
     new_count = None  
     new_average = None  
     new_max_profit = None
-
+    
     try:
         await db_connection.begin()
         
-        query = """SELECT snipe_count, average_discount, max_profit
+        query = """SELECT snipe_count, average_discount, max_profit, msg_link
                    FROM snipe_statistics 
                    WHERE market_name = %s 
                    FOR UPDATE;"""
@@ -165,18 +165,22 @@ async def update_statistics(market_name, discount, profit):
             if data[2] is None:
                 new_max_profit = profit
             else:
-                new_max_profit = max(data[2], profit)    
+                if profit > data[2]:
+                    new_max_profit = profit
+                else:
+                    new_max_profit = data[2]
+                    message_url = data[3]
             
-            query = "UPDATE snipe_statistics SET snipe_count = %s, average_discount = %s, max_profit = %s WHERE market_name = %s;"
-            await cursor.execute(query, (new_count, new_average, new_max_profit, market_name))
+            query = "UPDATE snipe_statistics SET snipe_count = %s, average_discount = %s, max_profit = %s, msg_link = %s WHERE market_name = %s;"
+            await cursor.execute(query, (new_count, new_average, new_max_profit, message_url, market_name))
         else:
             new_count = 1
             new_average = float(discount)
             new_max_profit = profit  
             
-            query = """INSERT INTO snipe_statistics (market_name, snipe_count, average_discount, max_profit)
-                       VALUES (%s, %s, %s, %s);"""
-            await cursor.execute(query, (market_name, new_count, new_average, new_max_profit))
+            query = """INSERT INTO snipe_statistics (market_name, snipe_count, average_discount, max_profit, msg_link)
+                       VALUES (%s, %s, %s, %s, %s);"""
+            await cursor.execute(query, (market_name, new_count, new_average, new_max_profit, message_url))
         
         await db_connection.commit()
     except Exception as e:
@@ -213,7 +217,7 @@ async def send_statistics_embed():
         cursor = await db_connection.cursor()
 
         try:
-            query = """SELECT market_name, snipe_count, average_discount, max_profit
+            query = """SELECT market_name, snipe_count, average_discount, max_profit, msg_link
                        FROM snipe_statistics
                        ORDER BY snipe_count DESC;"""
             await cursor.execute(query)
@@ -223,8 +227,8 @@ async def send_statistics_embed():
                 embed = discord.Embed(title="Market Statistics", description="Here are the latest stats:", color=discord.Color.blue())
 
                 for row in data:
-                    market_name, snipe_count, average_discount, max_profit = row
-                    embed.add_field(name=f"{market_name}", value=f"Snipe Count: {snipe_count}\nAverage Discount: {average_discount}%\nMax recorded profit: ${max_profit}", inline=False)
+                    market_name, snipe_count, average_discount, max_profit, msg_link = row
+                    embed.add_field(name=f"{market_name}", value=f"Snipe Count: {snipe_count}\nAverage Discount: {average_discount}%\nMax recorded profit: ${max_profit} ([Jump]({msg_link}))", inline=False)
 
                 embed.set_footer(text=f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
 
@@ -240,7 +244,7 @@ async def send_statistics_embed():
             await cursor.close()
             pool.release(db_connection)
 
-        await asyncio.sleep(10)
+        await asyncio.sleep(cfg["main"]["statistic_message_update_delay"])
 
 
 async def create_embed(info, discount):
@@ -270,6 +274,8 @@ async def create_embed(info, discount):
 
 
 async def send_message(info,discount):
+    message = None
+    message_url = None
     try:
         if not info or not discount:
             return
@@ -287,23 +293,25 @@ async def send_message(info,discount):
 
         if price <= cfg["main"]["price_ranges"][0]:
             embed.colour = discord.Colour(cfg["main"]["message_colors"][0])
-            await channel[0].send(embed=embed, view=view)
+            message = await channel[0].send(embed=embed, view=view)
         elif price < cfg["main"]["price_ranges"][1]:
             embed.colour = discord.Colour(cfg["main"]["message_colors"][1])
-            await channel[1].send(embed=embed, view=view)
+            message = await channel[1].send(embed=embed, view=view)
         else:     
             embed.colour = discord.Colour(cfg["main"]["message_colors"][2])
-            await channel[2].send(embed=embed, view=view)
+            message = await channel[2].send(embed=embed, view=view)
+
+        message_url = message.jump_url
 
         if price > cfg["main"]["price_ranges"][2] and float(discount[4]) < 7 and float(discount[0]) >= 10 or float(discount[2]) > 5 :
             embed.colour = discord.Colour(cfg["main"]["message_colors"][3])
-            await channel[3].send(embed=embed, view=view)
-
+            message = await channel[3].send(embed=embed, view=view)
+       
     except Exception as e:
         print("send_message: ",e)
         return
     finally:
-        await update_statistics(info[4], discount[0], discount[2])
+        await update_statistics(info[4], discount[0], discount[2], message_url)
 
 @client.event
 async def on_ready():

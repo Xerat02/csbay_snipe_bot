@@ -12,6 +12,7 @@
         "discord_client_token":"MTEwNDg3MTkxNjk0MDA1MDU0Mg.GM75CV.6WPwQaiAQTUxeVAXpWIsRgikVQHFIJ8UJ7CdSQ",
         "message_send_delay":0.04,
         "offers_check_delay":0.01,
+        "statistic_message_update_delay": 4,
         "temp_files_location":"tempFiles",
         "risk_ranges":[
             3.5,

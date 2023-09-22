@@ -157,6 +157,7 @@ async def update_statistics(market_name, discount, profit, message_url):
         await cursor.execute(query, (market_name,))
         data = await cursor.fetchone()
 
+        #general snipe data
         if data:
             new_count = data[0] + 1
             new_average = float(((data[1] * data[0]) + discount) / new_count)
@@ -181,6 +182,32 @@ async def update_statistics(market_name, discount, profit, message_url):
             query = """INSERT INTO snipe_statistics (market_name, snipe_count, average_discount, max_profit, msg_link)
                        VALUES (%s, %s, %s, %s, %s);"""
             await cursor.execute(query, (market_name, new_count, new_average, new_max_profit, message_url))
+
+        #time snipe data (1 min, 10min, 1h, 1d, 1w)
+        for x in cfg["main"]["stats_time_frames"]:
+            time = datetime.now()
+            query = """SELECT time_frame, market, potencial_profit, msg_link, discount, update_time
+                    FROM snipe_time_stats
+                    WHERE time_frame = %s
+                    FOR UPDATE;"""
+            await cursor.execute(query, (x,))
+            time_frame_data = await cursor.fetchone()
+            
+            x = int(x)
+
+            if time_frame_data:
+                time_diff = time - time_frame_data[5]
+                if time_diff.total_seconds() > x*60:
+                    query = "UPDATE snipe_time_stats SET market = %s, potencial_profit = %s, msg_link = %s, discount = %s, update_time = %s WHERE time_frame = %s;"
+                    await cursor.execute(query, (market_name, profit, message_url, discount, time, x)) 
+
+                if time_frame_data[2] < profit:
+                    query = "UPDATE snipe_time_stats SET market = %s, potencial_profit = %s, msg_link = %s, discount = %s WHERE time_frame = %s;"
+                    await cursor.execute(query, (market_name, profit, message_url, discount, x)) 
+            else:
+                query = """INSERT INTO snipe_time_stats (time_frame, market, potencial_profit, msg_link, discount, update_time)
+                        VALUES (%s, %s, %s, %s, %s, %s);"""
+                await cursor.execute(query, (x, market_name, profit, message_url, discount, time))        
         
         await db_connection.commit()
     except Exception as e:
@@ -223,12 +250,47 @@ async def send_statistics_embed():
             await cursor.execute(query)
             data = await cursor.fetchall()
 
-            if data:
+            query = """SELECT time_frame, market, potencial_profit, msg_link, discount
+            FROM snipe_time_stats
+            ORDER BY time_frame ASC;"""
+            await cursor.execute(query)
+            time_frame_data = await cursor.fetchall()
+
+            if data and time_frame_data:
                 embed = discord.Embed(title="Market Statistics", description="Here are the latest stats:", color=discord.Color.blue())
 
                 for row in data:
                     market_name, snipe_count, average_discount, max_profit, msg_link = row
-                    embed.add_field(name=f"{market_name}", value=f"Snipe Count: {snipe_count}\nAverage Discount: {average_discount}%\nMax recorded profit: ${max_profit} ([Jump]({msg_link}))", inline=False)
+                    embed.add_field(name=f"{market_name}", value=f"📚 Snipe Count: {snipe_count}\n🔖 Average Discount: {average_discount}%\n💵 Max recorded profit: ${max_profit} ([Jump]({msg_link}))", inline=False)
+
+                embed.add_field(name="",value="")
+                
+                def remove_trailing_zeros(x):
+                    if "." in x:
+                        if x.endswith('0') or x.endswith('.'):
+                            return(remove_trailing_zeros(x[:-1]))
+                    else:
+                        return(x)
+                       
+                    
+                for row in time_frame_data:
+                    time_frame, market, potencial_profit, msg_link, discount = row
+
+                    x = 0    
+                    if time_frame < 60:
+                        x = time_frame
+                        time_frame = remove_trailing_zeros(str(x)) + " min"
+                    elif time_frame / 60 < 24:
+                        x = time_frame / 60
+                        time_frame = remove_trailing_zeros(str(x)) + " h" 
+                    elif time_frame / 1440 < 7:
+                        x = time_frame / 1440
+                        time_frame = remove_trailing_zeros(str(x)) + " d"
+                    elif time_frame / 10080 < 5:
+                        x = time_frame / 10080
+                        time_frame = remove_trailing_zeros(str(x)) + " w"     
+                    
+                    embed.add_field(name=f"The best snipes in {time_frame}:", value=f"Market: {market}\nPotencial profit: ${potencial_profit} ([Jump]({msg_link}))\nDiscount: {discount}%", inline=False)
 
                 embed.set_footer(text=f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
 

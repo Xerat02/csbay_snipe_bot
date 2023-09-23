@@ -8,6 +8,7 @@ from datetime import datetime
 from collections import deque
 
 
+
 cfg = json.load(open("configs/config.json"))
 
 # que
@@ -23,8 +24,10 @@ client = discord.Client(intents=intents)
 pool = None
 
 
+
 async def get_db_connection():
     return await pool.acquire()
+
 
 
 async def close_pool():
@@ -32,6 +35,7 @@ async def close_pool():
     if pool:
         pool.close()
         await pool.wait_closed()
+
 
 
 async def string_comp(name, price):
@@ -88,6 +92,7 @@ async def string_comp(name, price):
             pool.release(db_connection)
 
 
+
 async def process_file(filename):
     temp_folder = cfg["main"]["temp_files_location"]
     if not os.path.exists(temp_folder):
@@ -111,6 +116,7 @@ async def process_file(filename):
         print("process_file: "+e)  
     finally:                          
         os.remove(temp_filename)                    
+
 
 
 async def send_latest_offers():
@@ -138,6 +144,7 @@ async def send_message_worker():
             finally:
                 message_queue.task_done()
         await asyncio.sleep(cfg["main"]["message_send_delay"])
+
 
 
 async def update_statistics(market_name, discount, profit, message_url):
@@ -219,6 +226,7 @@ async def update_statistics(market_name, discount, profit, message_url):
         pool.release(db_connection)
 
 
+
 async def find_existing_message(channel, target_title):
     try:
         async for message in channel.history(limit=100):
@@ -228,6 +236,7 @@ async def find_existing_message(channel, target_title):
         return None
     except Exception as e:
         print("find_existing_message: ",e)
+
 
 
 async def send_statistics_embed():
@@ -310,6 +319,7 @@ async def send_statistics_embed():
         await asyncio.sleep(cfg["main"]["statistic_message_update_delay"])
 
 
+
 async def create_embed(info, discount):
     header = discount[5]
     risk = discount[4]
@@ -334,6 +344,7 @@ async def create_embed(info, discount):
         return embed
     except Exception as e:
         print("create_embed: ",e)
+
 
 
 async def send_message(info,discount):
@@ -376,6 +387,8 @@ async def send_message(info,discount):
     finally:
         await update_statistics(info[4], discount[0], discount[2], message_url)
 
+
+
 @client.event
 async def on_ready():
     global pool
@@ -390,13 +403,14 @@ async def on_ready():
         minsize = cfg["database"]["minsize"],
         maxsize = cfg["database"]["maxsize"]
     )
-    
     asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed())
+
 
 
 @client.event
 async def on_close():
     await close_pool()
+
 
 
 client.run(cfg["main"]["discord_client_token"])

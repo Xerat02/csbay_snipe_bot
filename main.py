@@ -162,18 +162,19 @@ async def update_statistics(market_name, discount, profit, message_url):
             new_count = data[0] + 1
             new_average = float(((data[1] * data[0]) + discount) / new_count)
             new_average = round(new_average, 2)
-            
+            new_message_url = data[3]
+
             if data[2] is None:
                 new_max_profit = profit
             else:
                 if profit > data[2]:
                     new_max_profit = profit
+                    new_message_url = message_url
                 else:
                     new_max_profit = data[2]
-                    message_url = data[3]
             
             query = "UPDATE snipe_statistics SET snipe_count = %s, average_discount = %s, max_profit = %s, msg_link = %s WHERE market_name = %s;"
-            await cursor.execute(query, (new_count, new_average, new_max_profit, message_url, market_name))
+            await cursor.execute(query, (new_count, new_average, new_max_profit, new_message_url, market_name))
         else:
             new_count = 1
             new_average = float(discount)

@@ -347,14 +347,14 @@ async def create_embed(info, discount):
 
 
 
-async def save_snipe_to_dtb(buff_id, skin_name, price, discount, risk_factor, market_name, offer_link, img_link):
+async def save_snipe_to_dtb(buff_id, price, discount, risk_factor, market_name, offer_link, img_link):
     try:
         release_datetime = datetime.now()
         db_connection = await get_db_connection() 
         cursor = await db_connection.cursor()
-        query = """INSERT INTO snipes (buff_id, skin_name, price, discount, risk_factor, market_name, offer_link, img_link, release_datetime)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);"""
-        await cursor.execute(query, (buff_id, skin_name, price, discount, risk_factor, market_name, offer_link, img_link, release_datetime))    
+        query = """INSERT INTO snipes (buff_id, price, discount, risk_factor, market_name, offer_link, img_link, release_datetime)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s);"""
+        await cursor.execute(query, (buff_id, price, discount, risk_factor, market_name, offer_link, img_link, release_datetime))    
         await db_connection.commit()
     except Exception as e:
         print(e)
@@ -403,7 +403,7 @@ async def send_message(info,discount):
         return
     finally:
         await update_statistics(info[4], discount[0], discount[2], message_url)
-        await save_snipe_to_dtb(discount[8], discount[5], float(info[1]), discount[1], discount[4], info[4], info[2], info[3])
+        await save_snipe_to_dtb(discount[8], float(info[1]), discount[1], discount[4], info[4], info[2], info[3])
 
 
 

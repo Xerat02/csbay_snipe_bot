@@ -1,15 +1,21 @@
+####################################
+#
+# This snipe bot is created by Xerat
+#
+####################################
+
 import discord
 import aiomysql
 import asyncio
 import shutil
 import os
-import json
+import tools.module as t
 from datetime import datetime
 from collections import deque
 
 
 
-cfg = json.load(open("configs/config.json"))
+cfg = t.cfg_load("cconfig")
 
 # que
 message_queue = asyncio.Queue()

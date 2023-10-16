@@ -2,21 +2,15 @@ import asyncio
 import aiohttp
 import random
 import json
-import aiomysql
+import tools.module as tl
 from forex_python.converter import CurrencyRates
 from datetime import datetime
 
 cfg = json.load(open("configs/config.json"))
-cookies = {'session': '1-ykvoh7Qo-7vNI1FL07XOpqBTBhgFUD-v08dEmFQ3IlQ_2030480540'}
+cookies = {'session': '1-eQ9kEbT6tHYyYUcdQTRqZg4KShd6B9n2Klyo7jlw1WSY2030480540'}
 
-async def get_db_connection():
-    return await pool.acquire()
-
-async def close_pool():
-    global pool
-    if pool:
-        pool.close()
-        await pool.wait_closed()
+#database
+pool = None
 
 def convert_currency():
     try:
@@ -32,14 +26,15 @@ def convert_currency():
 async def scrape():
     conversion = convert_currency()
     for x in range(270):
-        db_connection = await get_db_connection()
+        db_connection = await tl.get_db_conn(pool)
         cursor = await db_connection.cursor()
         url = "https://buff.163.com/api/market/goods/all?game=csgo&page_size=80&page_num=" + str(x + 1)
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=10,cookies=cookies) as response:
-                    if response.status == 200:
-                        items = await response.json()
+                    items = await response.json()
+                    code = str(items['code']).lower()
+                    if response.status == 200 and  code == "ok":
                         itemsData = items['data']
                         for item in itemsData['items']:
                             item_id = item['id']
@@ -57,38 +52,25 @@ async def scrape():
                                   "buy_num = VALUES(buy_num), "\
                                   "sell_num = VALUES(sell_num), "\
                                   "update_time = VALUES(update_time)"
-                            await cursor.execute(sql, (item_id, market_hash_name, price_in_usd, buy_max_price, buy_num, sell_num, update_time))
-                            await db_connection.commit()
+                            await tl.db_manipulate_data(sql, cursor, db_connection, item_id, market_hash_name, price_in_usd, buy_max_price, buy_num, sell_num, update_time)
+                        print("New buff skins were successfully commited to the database! Page: "+str(x))                   
         except Exception as e:
-            print(e)
-            await close_pool()
+            tl.exceptions(e)
             return
         finally:
-            if cursor:
-                await cursor.close()
-            if db_connection:
-                pool.release(db_connection)
-
-            print("New buff skins were successfully commited to the database! Page: "+str(x))
-            await asyncio.sleep(random.randrange(6, 14))
+            await tl.release_db_conn(cursor,db_connection,pool)
+            print("Response status: "+str(response.status)+"\nCode message: "+code)
+            await asyncio.sleep(random.randrange(6, 20))
      
 
 async def main():
-  global pool
-  pool = await aiomysql.create_pool(
-       host = cfg["database"]["host"],
-       port = cfg["database"]["port"],
-       user = cfg["database"]["user"],
-       password = cfg["database"]["password"],
-       db = cfg["database"]["db"],
-       minsize = cfg["database"]["minsize"],
-       maxsize = cfg["database"]["maxsize"]
-   )  
-  while True:
-      try:
-        await scrape()
-      except Exception as e:
-        print(e)
-        return 
+    global pool
+    pool = await tl.set_db_conn()
+    while True:
+        try:
+          await scrape()
+        except Exception as e:
+          tl.exceptions(e)
+          return 
 
 asyncio.run(main())

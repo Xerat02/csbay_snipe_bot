@@ -1,21 +1,24 @@
 ####################################
 #
+#
 # This snipe bot is created by Xerat
+#
 #
 ####################################
 
 import discord
 import aiomysql
+import aiohttp
 import asyncio
 import shutil
 import os
-import tools.module as t
+import tools.module as tl
 from datetime import datetime
 from collections import deque
 
 
 
-cfg = t.cfg_load("cconfig")
+cfg = tl.cfg_load("config")
 
 # que
 message_queue = asyncio.Queue()
@@ -30,31 +33,16 @@ client = discord.Client(intents=intents)
 pool = None
 
 
-
-async def get_db_connection():
-    return await pool.acquire()
-
-
-
-async def close_pool():
-    global pool
-    if pool:
-        pool.close()
-        await pool.wait_closed()
-
-
-
 async def string_comp(name, price):
     try:
         name = str(name).lower().strip()
         risk = ""
 
-        db_connection = await get_db_connection()
+        db_connection = await tl.get_db_conn(pool)
         cursor = await db_connection.cursor()
 
-        query = "SELECT * FROM buff_skins WHERE market_hash_name = %s LIMIT 1;"
-        await cursor.execute(query, (name,))
-        data = await cursor.fetchall()
+        sql = "SELECT * FROM buff_skins WHERE market_hash_name = %s LIMIT 1;"
+        data = await tl.db_get_data(sql, cursor, None, name)
 
         for row in data:
             buff_id = row[0]
@@ -84,18 +72,13 @@ async def string_comp(name, price):
                     profit = ((num * 0.975) - price)
                     if discount > 0.5 and profit > 0.01:
                         buff_link = "https://buff.163.com/goods/" + str(buff_id)
-                        await cursor.close()
-                        db_connection.close()
                         return [round(discount, 2), num, round(profit, 2), buff_link, risk, buff_name, buff_update_time, sell_num, buff_id]        
         return None
     except Exception as e:
-        print("Error:", e)
+        tl.exceptions(e)
         return None
     finally:
-        if cursor:
-            await cursor.close()
-        if db_connection:
-            pool.release(db_connection)
+        await tl.release_db_conn(cursor,db_connection,pool)
 
 
 
@@ -119,7 +102,7 @@ async def process_file(filename):
                             processed_messages.append(info[3])
                             print(info)
     except Exception as e:
-        print("process_file: "+e)  
+        tl.exceptions(e)  
     finally:                          
         os.remove(temp_filename)                    
 
@@ -133,7 +116,7 @@ async def send_latest_offers():
             await asyncio.gather(*tasks)            
             await asyncio.sleep(cfg["main"]["offers_check_delay"])            
         except Exception as e:
-            print("send_latest_offers: ", e)
+            tl.exceptions(e)
 
 
 
@@ -146,7 +129,7 @@ async def send_message_worker():
             try:
                 await send_message(info, discount)
             except Exception as e:
-                print("send_message_worker: ", e)
+                tl.exceptions(e)
             finally:
                 message_queue.task_done()
         await asyncio.sleep(cfg["main"]["message_send_delay"])
@@ -154,7 +137,7 @@ async def send_message_worker():
 
 
 async def update_statistics(market_name, discount, profit, message_url):
-    db_connection = await get_db_connection() 
+    db_connection = await tl.get_db_conn(pool)
     cursor = await db_connection.cursor()
     new_count = None  
     new_average = None  
@@ -163,12 +146,11 @@ async def update_statistics(market_name, discount, profit, message_url):
     try:
         await db_connection.begin()
         
-        query = """SELECT snipe_count, average_discount, max_profit, msg_link
+        sql = """SELECT snipe_count, average_discount, max_profit, msg_link
                    FROM snipe_statistics 
                    WHERE market_name = %s 
                    FOR UPDATE;"""
-        await cursor.execute(query, (market_name,))
-        data = await cursor.fetchone()
+        data = await tl.db_get_data(sql, cursor, 1, market_name)
 
         #general snipe data
         if data:
@@ -186,50 +168,49 @@ async def update_statistics(market_name, discount, profit, message_url):
                 else:
                     new_max_profit = data[2]
             
-            query = "UPDATE snipe_statistics SET snipe_count = %s, average_discount = %s, max_profit = %s, msg_link = %s WHERE market_name = %s;"
-            await cursor.execute(query, (new_count, new_average, new_max_profit, new_message_url, market_name))
+            sql = "UPDATE snipe_statistics SET snipe_count = %s, average_discount = %s, max_profit = %s, msg_link = %s WHERE market_name = %s;"
+            await tl.db_manipulate_data(sql, cursor, db_connection, False, new_count, new_average, new_max_profit, new_message_url, market_name)
         else:
             new_count = 1
             new_average = float(discount)
             new_max_profit = profit  
             
-            query = """INSERT INTO snipe_statistics (market_name, snipe_count, average_discount, max_profit, msg_link)
+            sql = """INSERT INTO snipe_statistics (market_name, snipe_count, average_discount, max_profit, msg_link)
                        VALUES (%s, %s, %s, %s, %s);"""
-            await cursor.execute(query, (market_name, new_count, new_average, new_max_profit, message_url))
+            await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, new_count, new_average, new_max_profit, message_url)
 
         #time snipe data (1 min, 10min, 1h, 1d, 1w)
         for x in cfg["main"]["stats_time_frames"]:
             time = datetime.now()
-            query = """SELECT time_frame, market, potencial_profit, msg_link, discount, update_time
+            sql = """SELECT time_frame, market, potencial_profit, msg_link, discount, update_time
                     FROM snipe_time_stats
                     WHERE time_frame = %s
                     FOR UPDATE;"""
-            await cursor.execute(query, (x,))
-            time_frame_data = await cursor.fetchone()
+            time_frame_data = await tl.db_get_data(sql, cursor, 1, x)
             
             x = int(x)
 
             if time_frame_data:
                 time_diff = time - time_frame_data[5]
                 if time_diff.total_seconds() > x*60:
-                    query = "UPDATE snipe_time_stats SET market = %s, potencial_profit = %s, msg_link = %s, discount = %s, update_time = %s WHERE time_frame = %s;"
-                    await cursor.execute(query, (market_name, profit, message_url, discount, time, x)) 
+                    sql = "UPDATE snipe_time_stats SET market = %s, potencial_profit = %s, msg_link = %s, discount = %s, update_time = %s WHERE time_frame = %s;"
+                    await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, profit, message_url, discount, time, x)
+
+                    await asyncio.sleep(0.07)
 
                 if time_frame_data[2] < profit:
-                    query = "UPDATE snipe_time_stats SET market = %s, potencial_profit = %s, msg_link = %s, discount = %s WHERE time_frame = %s;"
-                    await cursor.execute(query, (market_name, profit, message_url, discount, x)) 
+                    sql = "UPDATE snipe_time_stats SET market = %s, potencial_profit = %s, msg_link = %s, discount = %s WHERE time_frame = %s;"
+                    await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, profit, message_url, discount, x)
             else:
-                query = """INSERT INTO snipe_time_stats (time_frame, market, potencial_profit, msg_link, discount, update_time)
+                sql = """INSERT INTO snipe_time_stats (time_frame, market, potencial_profit, msg_link, discount, update_time)
                         VALUES (%s, %s, %s, %s, %s, %s);"""
-                await cursor.execute(query, (x, market_name, profit, message_url, discount, time))        
-        
+                await tl.db_manipulate_data(sql, cursor, db_connection, False, x, market_name, profit, message_url, discount, time)        
         await db_connection.commit()
     except Exception as e:
-        print(f"update_statistics:  {e}, Attempted value for average_discount: {new_average}")
+        tl.exceptions(e)
         await db_connection.rollback()
     finally:
-        await cursor.close()
-        pool.release(db_connection)
+        await tl.release_db_conn(cursor, db_connection, pool)
 
 
 
@@ -241,7 +222,7 @@ async def find_existing_message(channel, target_title):
                     return message
         return None
     except Exception as e:
-        print("find_existing_message: ",e)
+        tl.exceptions(e)
 
 
 
@@ -256,21 +237,19 @@ async def send_statistics_embed():
                 break
 
     while not client.is_closed():
-        db_connection = await get_db_connection()
+        db_connection = await tl.get_db_conn(pool)
         cursor = await db_connection.cursor()
 
         try:
-            query = """SELECT market_name, snipe_count, average_discount, max_profit, msg_link
+            sql = """SELECT market_name, snipe_count, average_discount, max_profit, msg_link
                        FROM snipe_statistics
                        ORDER BY snipe_count DESC;"""
-            await cursor.execute(query)
-            data = await cursor.fetchall()
+            data = await tl.db_get_data(sql, cursor, None)
 
-            query = """SELECT time_frame, market, potencial_profit, msg_link, discount
+            sql = """SELECT time_frame, market, potencial_profit, msg_link, discount
             FROM snipe_time_stats
             ORDER BY time_frame ASC;"""
-            await cursor.execute(query)
-            time_frame_data = await cursor.fetchall()
+            time_frame_data = await tl.db_get_data(sql, cursor, None)
 
             if data and time_frame_data:
                 embed = discord.Embed(title="Market Statistics", description="Here are the latest stats:", color=discord.Color.blue())
@@ -316,11 +295,10 @@ async def send_statistics_embed():
                     stats_message = await stats_channel.send(embed=embed)
 
         except Exception as e:
-            print(f"Error in send_statistics_embed: {e}")
+            tl.exceptions(e)
 
         finally:
-            await cursor.close()
-            pool.release(db_connection)
+            await tl.release_db_conn(cursor, db_connection, pool)
 
         await asyncio.sleep(cfg["main"]["statistic_message_update_delay"])
 
@@ -349,28 +327,26 @@ async def create_embed(info, discount):
         embed.set_footer(text=footer_text, icon_url=cfg["main"]["icons_urls"].get(info[4], ""))
         return embed
     except Exception as e:
-        print("create_embed: ",e)
+        tl.exceptions(e)
 
 
 
 async def save_snipe_to_dtb(buff_id, price, discount, risk_factor, market_name, offer_link, img_link):
     try:
         release_datetime = datetime.now()
-        db_connection = await get_db_connection() 
+        db_connection = await tl.get_db_conn(pool) 
         cursor = await db_connection.cursor()
-        query = """INSERT INTO snipes (buff_id, price, discount, risk_factor, market_name, offer_link, img_link, release_datetime)
+        sql = """INSERT INTO snipes (buff_id, price, discount, risk_factor, market_name, offer_link, img_link, release_datetime)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s);"""
-        await cursor.execute(query, (buff_id, price, discount, risk_factor, market_name, offer_link, img_link, release_datetime))    
-        await db_connection.commit()
+        await tl.db_manipulate_data(sql, cursor, db_connection, True, buff_id, price, discount, risk_factor, market_name, offer_link, img_link, release_datetime)
     except Exception as e:
-        print(e)
+        tl.exceptions(e)
     finally:
-        await cursor.close()
-        pool.release(db_connection)    
+        await tl.release_db_conn(cursor, db_connection, pool)   
 
 
 
-async def send_message(info,discount):
+async def send_message(info, discount):
     message = None
     message_url = None
     try:
@@ -405,35 +381,62 @@ async def send_message(info,discount):
             message = await channel[3].send(embed=embed, view=view)
        
     except Exception as e:
-        print("send_message: ",e)
+        tl.exceptions(e)
         return
     finally:
+        pass
         await update_statistics(info[4], discount[0], discount[2], message_url)
         await save_snipe_to_dtb(discount[8], float(info[1]), discount[1], discount[4], info[4], info[2], info[3])
 
+async def currency_updater():
+    while not client.is_closed():
+        db_connection = await tl.get_db_conn(pool)
+        cursor = await db_connection.cursor()
+        token = cfg["main"]["currency_updater_token"]
+        symbols = ["CNY", "RUB", "USD"]
+        url = f"http://data.fixer.io/api/latest?access_key={token}&symbols="
+        try:
+            for i in range(0, len(symbols)):
+                if i == (len(symbols) - 1):
+                    url += symbols[i]
+                else:
+                    url += symbols[i] + ", "
+
+            sql_select = "SELECT * FROM currency WHERE currency_name = %s;"
+            sql_insert = """INSERT INTO currency (currency_name, value) VALUES (%s, %s);"""
+            sql_update = """UPDATE currency SET value = %s WHERE currency_name = %s;"""
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=30) as response:
+                    response_data = await response.json()
+                    if response.status == 200 and response_data["success"]:
+                        for symbol in symbols:
+                            currency_value = response_data["rates"][symbol]
+                            if currency_value is not None:
+                                existing_currency = await tl.db_get_data(sql_select, cursor, 1, symbol)
+
+                                if existing_currency:
+                                    await tl.db_manipulate_data(sql_update, cursor, db_connection, True, currency_value, symbol)
+                                else:
+                                    await tl.db_manipulate_data(sql_insert, cursor, db_connection, True, symbol, currency_value)
+        except Exception as e:
+            tl.exceptions(e)  
+        finally:
+             await asyncio.sleep(cfg["main"]["currency_updater_delay"])   
 
 
 @client.event
 async def on_ready():
     global pool
+    pool = await tl.set_db_conn()
     print(f'Logged on as {client.user}!')
-
-    pool = await aiomysql.create_pool(
-        host = cfg["database"]["host"],
-        port = cfg["database"]["port"],
-        user = cfg["database"]["user"],
-        password = cfg["database"]["password"],
-        db = cfg["database"]["db"],
-        minsize = cfg["database"]["minsize"],
-        maxsize = cfg["database"]["maxsize"]
-    )
     asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed())
 
 
 
 @client.event
 async def on_close():
-    await close_pool()
+    await tl.close_db_conn(pool)
 
 
 

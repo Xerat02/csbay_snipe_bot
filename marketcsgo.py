@@ -2,18 +2,28 @@ import asyncio
 import json
 import websockets
 import logging
-import requests
+import tools.module as tl
 
 items = []
 cur_rate = 0
+pool = None
 
 async def convert_currency():
     global cur_rate
-    r = requests.get("https://api.exchangerate.host/latest?base=usd&amount=1&symbols=rub")
-    c = r.json()
-    converted_amount = c["rates"]["RUB"]
-    cur_rate = converted_amount
-    await asyncio.sleep(600)
+    try:
+        db_connection = await tl.get_db_conn(pool) 
+        cursor = await db_connection.cursor()
+        sql = "SELECT * FROM currency WHERE currency_name = %s"
+        usd = await tl.db_get_data(sql, cursor, 1, "USD")
+        usd = usd[1]
+        rub = await tl.db_get_data(sql, cursor, 1, "RUB")
+        rub = rub[1]
+        cur_rate = float(rub) / float(usd)
+    except Exception as e:
+        tl.exceptions(e)    
+    finally:
+        await asyncio.sleep(120)    
+
 
 async def ping_server(websocket):
     while True:
@@ -60,9 +70,11 @@ async def write_to_file():
             logging.error("Error occurred during writing data: %s", e)
 
 async def main():
+    global pool
+    pool = await tl.set_db_conn()
     while True:
         try:
-            await asyncio.gather(start(),write_to_file(),convert_currency())
+            await asyncio.gather(start(), write_to_file(), convert_currency())
         except Exception as e:
             logging.error("Error occurred during starting script: %s", e)
 

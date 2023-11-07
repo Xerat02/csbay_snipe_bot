@@ -430,7 +430,7 @@ async def on_ready():
     global pool
     pool = await tl.set_db_conn()
     print(f'Logged on as {client.user}!')
-    asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed())
+    await asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed(), currency_updater())
 
 
 

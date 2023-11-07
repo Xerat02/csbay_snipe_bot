@@ -6,23 +6,11 @@ import tools.module as tl
 
 items = []
 cur_rate = 0
-pool = None
 
 async def convert_currency():
     global cur_rate
-    try:
-        db_connection = await tl.get_db_conn(pool) 
-        cursor = await db_connection.cursor()
-        sql = "SELECT * FROM currency WHERE currency_name = %s"
-        usd = await tl.db_get_data(sql, cursor, 1, "USD")
-        usd = usd[1]
-        rub = await tl.db_get_data(sql, cursor, 1, "RUB")
-        rub = rub[1]
-        cur_rate = float(rub) / float(usd)
-    except Exception as e:
-        tl.exceptions(e)    
-    finally:
-        await asyncio.sleep(120)    
+    cur_rate = await tl.get_dollar("RUB", 1)
+    await asyncio.sleep(200)    
 
 
 async def ping_server(websocket):
@@ -47,7 +35,7 @@ async def start():
                     inner_data = json.loads(parsed_data['data'])
 
                     name = str(inner_data['i_market_hash_name']).replace("|","").replace("  "," ")
-                    price = str(round(((float(inner_data["ui_price"]))/cur_rate),2))
+                    price = str(round(((float(inner_data["ui_price"]))*cur_rate),3))
                     market_hash_name = str(inner_data["i_market_hash_name"]).replace(" ","%20")
                     link = "https://market.csgo.com/en/Agent/"+market_hash_name+"?id="+inner_data['ui_id']
                     image = "https://cdn2.csgo.com/item/image/width=458/"+market_hash_name+".webp"
@@ -70,8 +58,6 @@ async def write_to_file():
             logging.error("Error occurred during writing data: %s", e)
 
 async def main():
-    global pool
-    pool = await tl.set_db_conn()
     while True:
         try:
             await asyncio.gather(start(), write_to_file(), convert_currency())

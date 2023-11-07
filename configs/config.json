@@ -5,8 +5,8 @@
         "user":"user",
         "password":"Buldozer4563",
         "db":"csbay",
-        "minsize":7,
-        "maxsize":30
+        "minsize":3,
+        "maxsize":60
     },
     "main":{
         "discord_client_token":"MTEwNDg3MTkxNjk0MDA1MDU0Mg.GM75CV.6WPwQaiAQTUxeVAXpWIsRgikVQHFIJ8UJ7CdSQ",

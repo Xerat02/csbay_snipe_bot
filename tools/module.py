@@ -54,7 +54,7 @@ def cfg_load(file_name, dir = "configs/"):
     except Exception as e:
         exceptions(e)    
 
-cfg = cfg = cfg_load("config")
+cfg = cfg_load("config")
 
 #######################################
 # Database releated functions
@@ -134,3 +134,23 @@ async def db_manipulate_data(sql, cursor, db_conn, commit, *args, **kwargs):
     except Exception as e:
         exceptions(e)
         
+
+#######################################
+# Currency function
+#######################################
+
+async def get_dollar(from_curr, amount):
+    db_connection = await get_db_conn(await set_db_conn()) 
+    cursor = await db_connection.cursor()
+    try:
+        sql = "SELECT value FROM currency WHERE currency_name = %s;"
+        curr = await db_get_data(sql, cursor, 1, from_curr)
+        curr = curr[0]
+        sql = "SELECT value FROM currency WHERE currency_name = 'USD';"
+        usd = await db_get_data(sql, cursor, 1)
+        usd = usd[0]
+        curr = curr / usd
+        #print(amount / curr)
+        return float(amount) / float(curr)
+    except Exception as e:
+        exceptions(e)    

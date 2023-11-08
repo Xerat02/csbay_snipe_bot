@@ -33,52 +33,56 @@ client = discord.Client(intents=intents)
 pool = None
 
 
-async def string_comp(name, price):
+async def process_data(market_skin_name, market_price, market_item_link, market_name):
     try:
-        name = str(name).lower().strip()
-        risk = ""
+        market_skin_name = str(market_skin_name).lower().strip()
+        risk_factor = ""
 
         db_connection = await tl.get_db_conn(pool)
         cursor = await db_connection.cursor()
 
         sql = "SELECT * FROM buff_skins WHERE market_hash_name = %s LIMIT 1;"
-        data = await tl.db_get_data(sql, cursor, None, name)
+        data = await tl.db_get_data(sql, cursor, None, market_skin_name)
 
         for row in data:
             buff_id = row[0]
-            buff_name = str(row[1]).strip()
-            sell_price = row[2]
-            buff_price = row[3]
-            buy_num = row[4]
-            sell_num = row[5]
-            buff_update_time = row[6]
+            buff_skin_name = str(row[1]).strip()
+            buff_price = None
+            sell_price = round(row[2],2)
+            buy_price = round(row[3], 2)
+            item_buy_num = row[4]
+            item_sell_num = row[5]
+            item_image = row[6]
+            buff_data_update_time = row[7]
 
-            buff_update_time = int(buff_update_time.timestamp())
+            buff_data_update_time = int(buff_data_update_time.timestamp())
+            
+            
 
-            if buff_price == 0:
+            if buy_price == 0 or sell_price == 0:
+                return None
+            elif buy_price == 0:
                 buff_price = sell_price
-                risk = 9999
-            else:    
-                risk = abs((((sell_price) - buff_price) / buff_price) * 100)            
+                risk_factor = 9999
+            else:
+                buff_price = buy_price    
+                risk_factor = abs((((sell_price) - buff_price) / buff_price) * 100)            
 
-            if name == buff_name.lower():
-                num = float(buff_price)
-                num = round(num, 2)
-                price = float(price)
-                price = round(price, 2)
+            if market_skin_name == buff_skin_name.lower():
+                market_price = round(float(market_price), 2)
 
-                if price < num:
-                    discount = ((num / price)-1) * 100
-                    profit = ((num * 0.975) - price)
-                    if discount > 0.5 and profit > 0.01:
-                        buff_link = "https://buff.163.com/goods/" + str(buff_id)
-                        return [round(discount, 2), num, round(profit, 2), buff_link, risk, buff_name, buff_update_time, sell_num, buff_id]        
+                if market_price < buff_price:
+                    buff_discount = round(((buff_price / market_price) - 1) * 100, 2)
+                    profit = round((buff_price * 0.975) - market_price, 2)
+                    if buff_discount > 0.5 and profit > 0.01:
+                        buff_item_link = "https://buff.163.com/goods/" + str(buff_id)
+                        return [buff_id, buff_skin_name, market_skin_name, market_name, buff_price, market_price, buff_discount, risk_factor, profit, item_buy_num, item_sell_num, buff_item_link, market_item_link, item_image, buff_data_update_time]        
         return None
     except Exception as e:
         tl.exceptions(e)
         return None
     finally:
-        await tl.release_db_conn(cursor,db_connection,pool)
+        await tl.release_db_conn(cursor, db_connection,pool)
 
 
 
@@ -94,13 +98,12 @@ async def process_file(filename):
             for row in file.read().split('\n'):
                 row = str(row).split(";")
                 if len(row) > 2:
-                    info = row
-                    if info[3] not in processed_messages:
-                        discount = await string_comp(row[0], row[1])
-                        if discount and discount[0]:
-                            await message_queue.put((info, discount))
-                            processed_messages.append(info[3])
-                            print(info)
+                    data = await process_data(row[0], row[1], row[2], row[4])
+                    if data is not None:
+                        if data[12] not in processed_messages:
+                            await message_queue.put(data)
+                            processed_messages.append(data[12])
+                            print(row)
     except Exception as e:
         tl.exceptions(e)  
     finally:                          
@@ -123,11 +126,8 @@ async def send_latest_offers():
 async def send_message_worker():
     while True:
         if not message_queue.empty():
-            row = await message_queue.get()
-            info = row[0]
-            discount = row[1]
             try:
-                await send_message(info, discount)
+                await send_message(await message_queue.get())
             except Exception as e:
                 tl.exceptions(e)
             finally:
@@ -304,9 +304,9 @@ async def send_statistics_embed():
 
 
 
-async def create_embed(info, discount):
-    header = discount[5]
-    risk = discount[4]
+async def create_embed(data):
+    header = data[1]
+    risk = data[7]
     try:
         if risk < cfg["main"]["risk_ranges"][0]:
             risk = "Low"
@@ -316,29 +316,29 @@ async def create_embed(info, discount):
             risk = "High"
         else:
             risk = "Very High"
-        risk = risk + " (" + str(discount[7]) + " on sale)"
+        risk = risk + " (" + str(data[10]) + " on sale)"
 
-        desc = f"**Risk:** `{risk}`\n**Market price:** ${round(float(info[1]),2)}\n**Buff price:** ${discount[1]}\n**Potencial profit:** ${discount[2]} (Buff fee included)\n**Discount:** {discount[0]}%\n\nBuff data was last updated <t:{discount[6]}:R>"
+        desc = f"**Risk:** `{risk}`\n**Market price:** ${data[5]}\n**Buff price:** ${data[4]}\n**Potencial profit:** ${data[8]} (Buff fee included)\n**Discount:** {data[6]}%\n\nBuff data was last updated <t:{data[14]}:R>"
 
-        embed = discord.Embed(title=header, description=desc, url=info[2])
-        embed.set_thumbnail(url=info[3])
+        embed = discord.Embed(title=header, description=desc, url=data[12])
+        embed.set_thumbnail(url=data[13])
         embed.timestamp = datetime.utcnow()
-        footer_text = info[4]
-        embed.set_footer(text=footer_text, icon_url=cfg["main"]["icons_urls"].get(info[4], ""))
+        footer_text = data[3]
+        embed.set_footer(text=footer_text, icon_url=cfg["main"]["icons_urls"].get(data[3], ""))
         return embed
     except Exception as e:
         tl.exceptions(e)
 
 
 
-async def save_snipe_to_dtb(buff_id, price, discount, risk_factor, market_name, offer_link, img_link):
+async def save_snipe_to_dtb(buff_id, price, discount, risk_factor, market_name, offer_link):
     try:
         release_datetime = datetime.now()
         db_connection = await tl.get_db_conn(pool) 
         cursor = await db_connection.cursor()
-        sql = """INSERT INTO snipes (buff_id, price, discount, risk_factor, market_name, offer_link, img_link, release_datetime)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s);"""
-        await tl.db_manipulate_data(sql, cursor, db_connection, True, buff_id, price, discount, risk_factor, market_name, offer_link, img_link, release_datetime)
+        sql = """INSERT INTO snipes (buff_id, price, discount, risk_factor, market_name, offer_link, release_datetime)
+        VALUES (%s, %s, %s, %s, %s, %s, %s);"""
+        await tl.db_manipulate_data(sql, cursor, db_connection, True, buff_id, price, discount, risk_factor, market_name, offer_link, release_datetime)
     except Exception as e:
         tl.exceptions(e)
     finally:
@@ -346,23 +346,23 @@ async def save_snipe_to_dtb(buff_id, price, discount, risk_factor, market_name, 
 
 
 
-async def send_message(info, discount):
+async def send_message(data):
     message = None
     message_url = None
     try:
-        if not info or not discount:
+        if not data:
             return
         
         channel = [client.get_channel(cfg["main"]["snipe_channels_id"][0]),client.get_channel(cfg["main"]["snipe_channels_id"][1]),client.get_channel(cfg["main"]["snipe_channels_id"][2]),client.get_channel(cfg["main"]["snipe_channels_id"][3])]
-        embed = await create_embed(info, discount)
+        embed = await create_embed(data)
 
-        market_button = discord.ui.Button(label="Check it",style=discord.ButtonStyle.url,url=info[2])
-        buff_button = discord.ui.Button(label="Buff price",style=discord.ButtonStyle.url,url=discount[3])
+        market_button = discord.ui.Button(label="Check it",style=discord.ButtonStyle.url,url=data[12])
+        buff_button = discord.ui.Button(label="Buff price",style=discord.ButtonStyle.url,url=data[11])
         view = discord.ui.View()
         view.add_item(market_button)
         view.add_item(buff_button)
 
-        price = float(info[1])
+        price = data[5]
 
         if price <= cfg["main"]["price_ranges"][0]:
             embed.colour = discord.Colour(cfg["main"]["message_colors"][0])
@@ -376,7 +376,7 @@ async def send_message(info, discount):
 
         message_url = message.jump_url
 
-        if price > cfg["main"]["price_ranges"][2] and float(discount[4]) < 7 and float(discount[0]) >= 10 or float(discount[2]) > 5 :
+        if price > cfg["main"]["price_ranges"][2] and data[7] < 7 and data[6] >= 10 or data[8] > 5 :
             embed.colour = discord.Colour(cfg["main"]["message_colors"][3])
             message = await channel[3].send(embed=embed, view=view)
        
@@ -385,8 +385,8 @@ async def send_message(info, discount):
         return
     finally:
         pass
-        await update_statistics(info[4], discount[0], discount[2], message_url)
-        await save_snipe_to_dtb(discount[8], float(info[1]), discount[1], discount[4], info[4], info[2], info[3])
+        await update_statistics(data[3], data[6], data[8], message_url)
+        await save_snipe_to_dtb(data[0], data[5], data[6], data[7], data[3], data[12])
 
 async def currency_updater():
     while not client.is_closed():
@@ -430,7 +430,7 @@ async def on_ready():
     global pool
     pool = await tl.set_db_conn()
     print(f'Logged on as {client.user}!')
-    await asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed(), currency_updater())
+    await asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed())
 
 
 

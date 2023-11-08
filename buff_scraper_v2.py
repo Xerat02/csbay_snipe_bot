@@ -38,15 +38,17 @@ async def scrape():
                             buy_max_price = float(item['buy_max_price']) * cur_rate
                             buy_num = int(item["buy_num"])
                             sell_num = int(item["sell_num"])
+                            item_image = str(item["goods_info"]["icon_url"])
                             update_time = datetime.now()
-                            sql = "INSERT INTO buff_skins (id, market_hash_name, price_in_usd, buy_max_price, buy_num, sell_num, update_time) VALUES (%s, %s, %s, %s, %s, %s, %s) " \
+                            sql = "INSERT INTO buff_skins (id, market_hash_name, price_in_usd, buy_max_price, buy_num, sell_num, item_image, update_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) " \
                                   "ON DUPLICATE KEY UPDATE market_hash_name = VALUES(market_hash_name), " \
                                   "price_in_usd = VALUES(price_in_usd), "\
                                   "buy_max_price = VALUES(buy_max_price), "\
                                   "buy_num = VALUES(buy_num), "\
                                   "sell_num = VALUES(sell_num), "\
+                                  "item_image = VALUES(item_image), "\
                                   "update_time = VALUES(update_time)"
-                            await tl.db_manipulate_data(sql, cursor, db_connection, True, item_id, market_hash_name, price_in_usd, buy_max_price, buy_num, sell_num, update_time)
+                            await tl.db_manipulate_data(sql, cursor, db_connection, True, item_id, market_hash_name, price_in_usd, buy_max_price, buy_num, sell_num, item_image, update_time)
                         print("New buff skins were successfully commited to the database! Page: "+str(x))                   
         except Exception as e:
             tl.exceptions(e)

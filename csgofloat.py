@@ -20,7 +20,7 @@ async def getdata():
                     data = await response.json()
                     new_skins = set()
                     for obj in data:
-                        name = str(obj["item"]["market_hash_name"]).replace("|","").replace("  "," ")
+                        name = str(obj["item"]["market_hash_name"])
                         price = str(float(obj["price"])/100)
                         image = "https://community.cloudflare.steamstatic.com/economy/image/"+obj["item"]["icon_url"]
                         link = "https://csgofloat.com/item/"+obj["id"]

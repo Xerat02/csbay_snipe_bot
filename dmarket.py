@@ -18,7 +18,7 @@ async def getdata():
                     data = await response.json()
                     new_skins = set()
                     for obj in data["objects"]:
-                        name = str(obj["title"]).replace("|","").replace("  "," ")
+                        name = str(obj["title"])
                         price = str(float(obj["price"]["USD"])/100)
                         link = "https://dmarket.com/ingame-items/item-list/csgo-skins?ref=y9l2rUxEFC&userOfferId="+obj["extra"]["linkId"]
                         image = obj["image"]

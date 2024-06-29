@@ -8,6 +8,9 @@
     "minsize": 3,
     "maxsize": 60
   },
+  "mongoDB": {
+    "uri": "mongodb://192.168.88.16:27017/"
+  },
   "main": {
     "discord_client_token": "MTEwNDg3MTkxNjk0MDA1MDU0Mg.GM75CV.6WPwQaiAQTUxeVAXpWIsRgikVQHFIJ8UJ7CdSQ",
     "currency_updater_token": "1d437a3b6e16fa0e3043159f07090b2e",

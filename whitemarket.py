@@ -128,14 +128,12 @@ async def getdata():
 }
         async with aiohttp.ClientSession() as session:
             async with session.get("https://api.white.market/graphql/api", json=payload, timeout=10) as response:
-                print(response.status)
                 if response.status == 200:
                     data = await response.json()
-                    print(data)
                     new_skins = set()
                     for obj in data["data"]["market_list"]["edges"]:
                         node = obj["node"]
-                        name = str(node["item"]["description"]["nameHash"]).replace("|", "").replace("  ", " ")
+                        name = str(node["item"]["description"]["nameHash"])
                         price = str(float(node["price"]["value"]))
                         link = f"https://white.market/item/{node['slug']}"
                         image = node["item"]["description"]["icon"]

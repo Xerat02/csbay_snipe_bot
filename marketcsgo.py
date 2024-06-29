@@ -34,7 +34,7 @@ async def start():
                     parsed_data = json.loads(response)
                     inner_data = json.loads(parsed_data['data'])
 
-                    name = str(inner_data['i_market_hash_name']).replace("|","").replace("  "," ")
+                    name = str(inner_data['i_market_hash_name'])
                     price = str(round(((float(inner_data["ui_price"]))*cur_rate),3))
                     market_hash_name = str(inner_data["i_market_hash_name"]).replace(" ","%20")
                     link = "https://market.csgo.com/en/Agent/"+market_hash_name+"?id="+inner_data['ui_id']

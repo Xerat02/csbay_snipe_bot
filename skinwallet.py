@@ -18,7 +18,7 @@ async def getdata():
                     data = await response.json()
                     new_skins = set()
                     for obj in data["offerThumbnails"]["thumbnails"]:
-                        name = str(obj["marketHashName"]).replace("|","").replace("  "," ")
+                        name = str(obj["marketHashName"])
                         price = str(float(obj["price"]["amount"])/100)
                         link = "https://www.skinwallet.com/market/offer/"+obj["inventoryItemId"]
                         image = "https://steamcommunity-a.akamaihd.net/economy/image/"+obj["imageUrl"]

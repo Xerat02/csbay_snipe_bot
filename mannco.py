@@ -19,7 +19,7 @@ async def getdata():
                     data = await response.json()
                     new_skins = set()
                     for obj in data:
-                        name = str(obj["name"]).replace("|","").replace("  "," ")
+                        name = str(obj["name"])
                         price = str(float(obj["price"])/100)
                         link = "https://mannco.store/item/"+obj["url"]
                         image = "https://steamcommunity-a.akamaihd.net/economy/image/"+obj["image"]

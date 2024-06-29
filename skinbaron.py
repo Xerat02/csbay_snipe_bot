@@ -22,10 +22,10 @@ async def getdata():
                         if "singleOffer" in obj and "exteriorClassName" in obj["singleOffer"]:
                             wear = " ("+obj["singleOffer"]["exteriorClassName"]+")"
                             price = str(float(obj["singleOffer"]["itemPrice"])*1.1)
-                            new_skins.add(((str(obj["singleOffer"]["localizedName"]).replace("|","").replace("  "," ") + wear),price,"https://skinbaron.de/en"+obj["offerLink"],obj["singleOffer"]["imageUrl"],"SkinBaron"))
+                            new_skins.add(((str(obj["singleOffer"]["localizedName"]) + wear),price,"https://skinbaron.de/en"+obj["offerLink"],obj["singleOffer"]["imageUrl"],"SkinBaron"))
                         elif "lowestPrice" in obj:
                             price = str(float(obj["lowestPrice"]*1.1))
-                            new_skins.add((str(obj["extendedProductInformation"]["localizedName"]).replace("|","").replace("  "," "),price,"https://skinbaron.de/en"+obj["offerLink"],obj["variant"]["imageUrl"],"SkinBaron"))    
+                            new_skins.add((str(obj["extendedProductInformation"]["localizedName"]),price,"https://skinbaron.de/en"+obj["offerLink"],obj["variant"]["imageUrl"],"SkinBaron"))    
 
                     async with lock:
                         current_skins.update(new_skins)

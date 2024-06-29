@@ -15,6 +15,7 @@ import os
 import tools.module as tl
 from datetime import datetime
 from collections import deque
+from pymongo import MongoClient, UpdateOne
 
 
 
@@ -32,61 +33,64 @@ client = discord.Client(intents=intents)
 #database
 pool = None
 
+#mongoDB
+mongo_client = MongoClient(cfg["mongoDB"]["uri"])
+db = mongo_client["csbay"]
+
 
 async def process_data(market_array):
     try:
-        db_connection = await tl.get_db_conn(pool)
-        cursor = await db_connection.cursor()
-        
+        collection = db["buff_items"]
+
         for market_row in market_array:
             market_row = market_row.split(";")
-
+            
             if len(market_row) > 1:
-
                 market_risk_factor = ""
-                market_skin_name = str(market_row[0]).lower().strip()
-                market_price = market_row[1]
+                market_skin_name = str(market_row[0])
+                market_price = float(market_row[1])
                 market_item_link = market_row[2]
                 market_name = market_row[4]
 
                 if market_item_link in processed_messages:
                     continue
                 
-                buff_row = await tl.db_get_data("SELECT * FROM buff_skins WHERE market_hash_name = %s LIMIT 1;", cursor, 1, market_skin_name)
+                buff_row = collection.find_one({"market_hash_name": {"$regex": f"^{market_skin_name}$", "$options": "i"}})
 
-                if buff_row != None:
-                    buff_id = buff_row[0]
-                    buff_skin_name = str(buff_row[1]).strip()
-                    buff_price = None
-                    buff_sell_price = round(buff_row[2],2)
-                    buff_buy_price = round(buff_row[3], 2)
-                    buff_item_buy_num = buff_row[4]
-                    buff_item_sell_num = buff_row[5]
-                    buff_item_image = buff_row[6]
-                    buff_data_update_time = int(buff_row[7].timestamp())
+                if buff_row:
+                    buff_id = buff_row["_id"]
+                    buff_skin_name = str(buff_row["market_hash_name"]).strip()
+                    buff_sell_price = round(buff_row["price_in_usd"], 2)
+                    buff_buy_price = round(buff_row["buy_max_price"], 2)
+                    buff_item_buy_num = buff_row["buy_num"]
+                    buff_item_sell_num = buff_row["sell_num"]
+                    buff_item_image = buff_row["item_image"]
+                    buff_data_update_time = int(buff_row["update_time"].timestamp())
+
                     if buff_buy_price == 0 or buff_sell_price == 0:
-                        return None
-                    elif buff_buy_price == 0:
-                        buff_price = buff_sell_price
-                        market_risk_factor = 9999
+                        continue
                     else:
-                        buff_price = buff_buy_price    
-                        market_risk_factor = abs((((buff_sell_price) - buff_price) / buff_price) * 100)            
-                    if market_skin_name == buff_skin_name.lower():
-                        market_price = round(float(market_price), 2)
+                        buff_price = buff_buy_price if buff_buy_price != 0 else buff_sell_price
+                        market_risk_factor = abs((((buff_sell_price - buff_price) / buff_price) * 100))
+
+                    if market_skin_name.lower().strip() == buff_skin_name.lower().strip():
+                        market_price = round(market_price, 2)
                         if market_price < buff_price:
                             buff_discount = round(((buff_price / market_price) - 1) * 100, 2)
                             profit = round((buff_price * 0.975) - market_price, 2)
+
                             if buff_discount > 0.5 and profit > 0.01:
-                                buff_item_link = "https://buff.163.com/goods/" + str(buff_id)
-                                processed_item = [buff_id, buff_skin_name, market_skin_name, market_name, buff_price, market_price, buff_discount, market_risk_factor, profit, buff_item_buy_num, buff_item_sell_num, buff_item_link, market_item_link, buff_item_image, buff_data_update_time]       
+                                buff_item_link = f"https://buff.163.com/goods/{buff_id}"
+                                processed_item = [
+                                    buff_id, buff_skin_name, market_skin_name, market_name, buff_price, market_price,
+                                    buff_discount, market_risk_factor, profit, buff_item_buy_num, buff_item_sell_num,
+                                    buff_item_link, market_item_link, buff_item_image, buff_data_update_time
+                                ]
                                 await message_queue.put(processed_item)
                                 processed_messages.append(processed_item[12])
                                 print(processed_item)
     except Exception as e:
         tl.exceptions(e)
-    finally:
-        await tl.release_db_conn(cursor, db_connection,pool)
 
 
 
@@ -253,7 +257,7 @@ async def send_statistics_embed():
                 
                 def remove_trailing_zeros(x):
                     if "." in x:
-                        if x.endswith('0') or x.endswith('.'):
+                        if x.endswith("0") or x.endswith("."):
                             return(remove_trailing_zeros(x[:-1]))
                     else:
                         return(x)
@@ -419,7 +423,7 @@ async def currency_updater():
 async def on_ready():
     global pool
     pool = await tl.set_db_conn()
-    print(f'Logged on as {client.user}!')
+    print(f"Logged on as {client.user}!")
     await asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed())
 
 

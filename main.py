@@ -212,9 +212,7 @@ async def update_statistics(market_name, discount, profit, message_url):
         await db_connection.rollback()
     finally:
         await tl.release_db_conn(cursor, db_connection, pool)
-
-
-
+ 
 async def find_existing_message(channel, target_title):
     try:
         async for message in channel.history(limit=100):
@@ -225,17 +223,9 @@ async def find_existing_message(channel, target_title):
     except Exception as e:
         tl.exceptions(e)
 
-
-
 async def send_statistics_embed():
     stats_channel = client.get_channel(cfg["main"]["stat_channels_id"][0])
     stats_message = await find_existing_message(stats_channel, "Market Statistics")
-
-    if stats_message is None:
-        async for message in stats_channel.history(limit=10):
-            if message.author == client.user:
-                stats_message = message
-                break
 
     while not client.is_closed():
         db_connection = await tl.get_db_conn(pool)
@@ -286,14 +276,14 @@ async def send_statistics_embed():
                         x = time_frame / 10080
                         time_frame = remove_trailing_zeros(str(x)) + " w"     
                     
-                    embed.add_field(name=f"The best snipes in {time_frame}:", value=f"Market: {market}\nPotencial profit: ${potencial_profit} ([Jump]({msg_link}))\nDiscount: {discount}%", inline=False)
+                    embed.add_field(name=f"The best snipe in {time_frame}:", value=f"Market: {market}\nPotencial profit: ${potencial_profit} ([Jump]({msg_link}))\nDiscount: {discount}%", inline=False)
 
                 embed.set_footer(text=f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
 
-                if stats_message:
+                if stats_message:  
                     await stats_message.edit(embed=embed)
                 else:
-                    stats_message = await stats_channel.send(embed=embed)
+                    stats_message = await stats_channel.send(embed=embed)  
 
         except Exception as e:
             tl.exceptions(e)

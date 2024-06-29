@@ -33,54 +33,58 @@ client = discord.Client(intents=intents)
 pool = None
 
 
-async def process_data(market_skin_name, market_price, market_item_link, market_name):
+async def process_data(market_array):
     try:
-        market_skin_name = str(market_skin_name).lower().strip()
-        risk_factor = ""
-
         db_connection = await tl.get_db_conn(pool)
         cursor = await db_connection.cursor()
+        
+        for market_row in market_array:
+            market_row = market_row.split(";")
 
-        sql = "SELECT * FROM buff_skins WHERE market_hash_name = %s LIMIT 1;"
-        data = await tl.db_get_data(sql, cursor, None, market_skin_name)
+            if len(market_row) > 1:
 
-        for row in data:
-            buff_id = row[0]
-            buff_skin_name = str(row[1]).strip()
-            buff_price = None
-            sell_price = round(row[2],2)
-            buy_price = round(row[3], 2)
-            item_buy_num = row[4]
-            item_sell_num = row[5]
-            item_image = row[6]
-            buff_data_update_time = row[7]
+                market_risk_factor = ""
+                market_skin_name = str(market_row[0]).lower().strip()
+                market_price = market_row[1]
+                market_item_link = market_row[2]
+                market_name = market_row[4]
 
-            buff_data_update_time = int(buff_data_update_time.timestamp())
-            
-            
+                if market_item_link in processed_messages:
+                    continue
+                
+                buff_row = await tl.db_get_data("SELECT * FROM buff_skins WHERE market_hash_name = %s LIMIT 1;", cursor, 1, market_skin_name)
 
-            if buy_price == 0 or sell_price == 0:
-                return None
-            elif buy_price == 0:
-                buff_price = sell_price
-                risk_factor = 9999
-            else:
-                buff_price = buy_price    
-                risk_factor = abs((((sell_price) - buff_price) / buff_price) * 100)            
-
-            if market_skin_name == buff_skin_name.lower():
-                market_price = round(float(market_price), 2)
-
-                if market_price < buff_price:
-                    buff_discount = round(((buff_price / market_price) - 1) * 100, 2)
-                    profit = round((buff_price * 0.975) - market_price, 2)
-                    if buff_discount > 0.5 and profit > 0.01:
-                        buff_item_link = "https://buff.163.com/goods/" + str(buff_id)
-                        return [buff_id, buff_skin_name, market_skin_name, market_name, buff_price, market_price, buff_discount, risk_factor, profit, item_buy_num, item_sell_num, buff_item_link, market_item_link, item_image, buff_data_update_time]        
-        return None
+                if buff_row != None:
+                    buff_id = buff_row[0]
+                    buff_skin_name = str(buff_row[1]).strip()
+                    buff_price = None
+                    buff_sell_price = round(buff_row[2],2)
+                    buff_buy_price = round(buff_row[3], 2)
+                    buff_item_buy_num = buff_row[4]
+                    buff_item_sell_num = buff_row[5]
+                    buff_item_image = buff_row[6]
+                    buff_data_update_time = int(buff_row[7].timestamp())
+                    if buff_buy_price == 0 or buff_sell_price == 0:
+                        return None
+                    elif buff_buy_price == 0:
+                        buff_price = buff_sell_price
+                        market_risk_factor = 9999
+                    else:
+                        buff_price = buff_buy_price    
+                        market_risk_factor = abs((((buff_sell_price) - buff_price) / buff_price) * 100)            
+                    if market_skin_name == buff_skin_name.lower():
+                        market_price = round(float(market_price), 2)
+                        if market_price < buff_price:
+                            buff_discount = round(((buff_price / market_price) - 1) * 100, 2)
+                            profit = round((buff_price * 0.975) - market_price, 2)
+                            if buff_discount > 0.5 and profit > 0.01:
+                                buff_item_link = "https://buff.163.com/goods/" + str(buff_id)
+                                processed_item = [buff_id, buff_skin_name, market_skin_name, market_name, buff_price, market_price, buff_discount, market_risk_factor, profit, buff_item_buy_num, buff_item_sell_num, buff_item_link, market_item_link, buff_item_image, buff_data_update_time]       
+                                await message_queue.put(processed_item)
+                                processed_messages.append(processed_item[12])
+                                print(processed_item)
     except Exception as e:
         tl.exceptions(e)
-        return None
     finally:
         await tl.release_db_conn(cursor, db_connection,pool)
 
@@ -95,18 +99,15 @@ async def process_file(filename):
     shutil.copy(filename, temp_filename)
     try:
         with open(temp_filename, "r", encoding="utf-8") as file:
-            for row in file.read().split('\n'):
-                row = str(row).split(";")
-                if len(row) > 2:
-                    data = await process_data(row[0], row[1], row[2], row[4])
-                    if data is not None:
-                        if data[12] not in processed_messages:
-                            await message_queue.put(data)
-                            processed_messages.append(data[12])
-                            print(row)
+            item_array = file.read().split("\n")
+            if len(item_array) > 0:
+                if item_array[0] != "":
+                    await process_data(item_array) #send array to process_data function
     except Exception as e:
         tl.exceptions(e)  
-    finally:                          
+    finally:               
+        with open(filename,"w") as file:
+            pass        
         os.remove(temp_filename)                    
 
 
@@ -384,7 +385,6 @@ async def send_message(data):
         tl.exceptions(e)
         return
     finally:
-        pass
         await update_statistics(data[3], data[6], data[8], message_url)
         await save_snipe_to_dtb(data[0], data[5], data[6], data[7], data[3], data[12])
 

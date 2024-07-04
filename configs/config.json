@@ -15,7 +15,7 @@
     "discord_client_token": "MTEwNDg3MTkxNjk0MDA1MDU0Mg.GM75CV.6WPwQaiAQTUxeVAXpWIsRgikVQHFIJ8UJ7CdSQ",
     "currency_updater_token": "1d437a3b6e16fa0e3043159f07090b2e",
     "message_send_delay": 0.04,
-    "offers_check_delay": 0.01,
+    "offers_check_delay": 0.005,
     "statistic_message_update_delay": 10,
     "currency_updater_delay": 4000,
     "temp_files_location": "tempFiles",
@@ -29,7 +29,9 @@
       "skinwallet.txt",
       "mannco.txt",
       "marketcsgo.txt",
-      "whitemarket.txt"
+      "whitemarket.txt",
+      "cs2go.txt",
+      "skinbid.txt"
     ],
     "icons_urls": {
       "Skinport": "https://i.imgur.com/NH7KSXK.png",
@@ -41,7 +43,9 @@
       "Mannco": "https://i.imgur.com/3weGAh2.png",
       "Waxpeer": "https://i.imgur.com/WWSVI1C.png",
       "Marketcsgo": "https://i.imgur.com/HFbrqsZ.png",
-      "WhiteMarket": "https://i.imgur.com/cIUZKLL.jpg"
+      "WhiteMarket": "https://i.imgur.com/cIUZKLL.jpg",
+      "CS2GO": "https://i.imgur.com/gjWau5K.jpg",
+      "SkinBid": "https://i.imgur.com/9vJbSuD.jpg"
     },
     "stat_channels_id": [1144777265574576198],
     "snipe_channels_id": [

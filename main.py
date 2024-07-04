@@ -12,6 +12,7 @@ import aiohttp
 import asyncio
 import shutil
 import os
+import re
 import tools.module as tl
 from datetime import datetime
 from collections import deque
@@ -50,13 +51,15 @@ async def process_data(market_array):
                 market_skin_name = str(market_row[0])
                 market_price = float(market_row[1])
                 market_item_link = market_row[2]
-                market_name = market_row[4]
+                market_name = market_row[3]
 
                 if market_item_link in processed_messages:
                     continue
                 
-                buff_row = collection.find_one({"market_hash_name": {"$regex": f"^{market_skin_name}$", "$options": "i"}})
+                search_value = "".join(market_skin_name.split()).lower()
+                buff_row = collection.find_one({"search_name": search_value})
 
+                
                 if buff_row:
                     buff_id = buff_row["_id"]
                     buff_skin_name = str(buff_row["market_hash_name"]).strip()
@@ -73,22 +76,29 @@ async def process_data(market_array):
                         buff_price = buff_buy_price if buff_buy_price != 0 else buff_sell_price
                         market_risk_factor = abs((((buff_sell_price - buff_price) / buff_price) * 100))
 
-                    if market_skin_name.lower().strip() == buff_skin_name.lower().strip():
-                        market_price = round(market_price, 2)
-                        if market_price < buff_price:
-                            buff_discount = round(((buff_price / market_price) - 1) * 100, 2)
-                            profit = round((buff_price * 0.975) - market_price, 2)
+                    market_price = round(market_price, 2)
+                    if market_price < buff_price:
+                        buff_discount = round(((buff_price / market_price) - 1) * 100, 2)
+                        profit = round((buff_price * 0.975) - market_price, 2)
 
-                            if buff_discount > 0.5 and profit > 0.01:
-                                buff_item_link = f"https://buff.163.com/goods/{buff_id}"
-                                processed_item = [
-                                    buff_id, buff_skin_name, market_skin_name, market_name, buff_price, market_price,
-                                    buff_discount, market_risk_factor, profit, buff_item_buy_num, buff_item_sell_num,
-                                    buff_item_link, market_item_link, buff_item_image, buff_data_update_time
-                                ]
-                                await message_queue.put(processed_item)
-                                processed_messages.append(processed_item[12])
-                                print(processed_item)
+                        if buff_discount > 1 and profit > 0.2:
+                            buff_item_link = f"https://buff.163.com/goods/{buff_id}"
+                            processed_item = [
+                                buff_id, buff_skin_name, market_skin_name, market_name, buff_price, market_price,
+                                buff_discount, market_risk_factor, profit, buff_item_buy_num, buff_item_sell_num,
+                                buff_item_link, market_item_link, buff_item_image, buff_data_update_time
+                            ]
+                            await message_queue.put(processed_item)
+                            processed_messages.append(processed_item[12])
+                            print(processed_item)
+                else:
+                    print("Not found!")
+                    print("-------------")
+                    print(buff_row)
+                    print(market_skin_name)  
+                    print(search_value)
+                    print(market_name)  
+                    print("-------------")              
     except Exception as e:
         tl.exceptions(e)
 
@@ -106,7 +116,7 @@ async def process_file(filename):
             item_array = file.read().split("\n")
             if len(item_array) > 0:
                 if item_array[0] != "":
-                    await process_data(item_array) #send array to process_data function
+                    await process_data(item_array) #send array to process_data function        
     except Exception as e:
         tl.exceptions(e)  
     finally:               
@@ -424,7 +434,7 @@ async def on_ready():
     global pool
     pool = await tl.set_db_conn()
     print(f"Logged on as {client.user}!")
-    await asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed())
+    await asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed())#, currency_updater())
 
 
 

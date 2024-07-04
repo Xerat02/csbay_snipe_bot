@@ -15,14 +15,14 @@ async def getdata():
     try:
         new_skins = set()
         async with aiohttp.ClientSession() as session:
-            async with session.get("https://www.skinwallet.com/en/market/get-offers?appId=730&page=1&sortBy=Newest", timeout=10) as response:
+            async with session.get("https://api.skinbid.com/api/search/auctions?take=120&skip=0&sellType=all&sort=created%23desc&goodDeals=false&popular=false&currency=USD", timeout=10) as response:
                 if response.status == 200:
                     data = await response.json()
-                    for obj in data["offerThumbnails"]["thumbnails"]:
-                        name = str(obj["marketHashName"])
-                        price = str(float(obj["price"]["amount"])/100)
-                        link = "https://www.skinwallet.com/market/offer/"+obj["inventoryItemId"]
-                        new_skins.add((name, price, link, "Skinwallet"))
+                    for obj in data["items"]:
+                        name = str(obj["items"][0]["item"]["fullName"])
+                        price = str(obj["nextMinimumBid"])
+                        link = "https://skinbid.com/listings?search="+name
+                        new_skins.add((name, price, link, "SkinBid"))
 
         updated_skins = new_skins - previous_skins
         previous_skins = new_skins
@@ -30,7 +30,7 @@ async def getdata():
         if not updated_skins:
             return
         else:
-            with open("textFiles/skinwallet.txt", "w", encoding="utf-8") as f:
+            with open("textFiles/skinbid.txt", "w", encoding="utf-8") as f:
                 for skin in updated_skins:
                     f.write(skin[0] + ";" + skin[1] + ";" + skin[2]+ ";" + skin[3] + "\n")
                     await asyncio.sleep(0.06)
@@ -46,7 +46,7 @@ async def main():
         except Exception as e:
             print(e)
         finally:
-            await asyncio.sleep(6)
+            await asyncio.sleep(10)
 
 
 

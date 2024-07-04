@@ -8,7 +8,7 @@ from datetime import datetime
 from pymongo import MongoClient, UpdateOne
 
 cfg = json.load(open("configs/config.json"))
-cookies = {'session': '1-73N9nnxv100xcZlM6_j7b2vc4KrGof-DlWpOGepIQXCL2030480540'}
+cookies = {'session': '1-DWa0coDi3DXz5lQ3yFb6CDtImZE9fw3BA2v2shvvG3Rm2030480540'}
 pool = None
 cur_rate = 0
 
@@ -26,8 +26,8 @@ async def convert_currency():
 
 
 async def scrape():
-    for x in range(270):
-        url = f"https://buff.163.com/api/market/goods/all?game=csgo&page_size=80&page_num={x + 1}"
+    for x in range(300, 0, -1):
+        url = f"https://buff.163.com/api/market/goods/all?game=csgo&page_size=80&page_num={x}"
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=10, cookies=cookies) as response:
@@ -53,6 +53,7 @@ async def scrape():
                                     {
                                         '$set': {
                                             'market_hash_name': market_hash_name,
+                                            'search_name': market_hash_name.replace(" ", "").replace("\t", "").replace("\n", "").replace("\r", "").lower(),
                                             'price_in_usd': price_in_usd,
                                             'buy_max_price': buy_max_price,
                                             'buy_num': buy_num,

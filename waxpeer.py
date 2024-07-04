@@ -15,8 +15,7 @@ async def on_add_item(data):
         if "★" in name:
             link_name = link_name[1:]
         link = "https://waxpeer.com/"+link_name+"/item/"+str(data['item_id'])
-        image = data['image']
-        items.append(f"{name};{price};{link};{image};Waxpeer")
+        items.append(f"{name};{price};{link};Waxpeer")
     except Exception as e:
         logging.error("Error occurred during getting data: %s", e)
         await sio.disconnect()

@@ -1,18 +1,4 @@
-import asyncio
-import aiohttp
-import logging
-
-previous_skins = set()
-current_skins = set()
-lock = asyncio.Lock()
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s]: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-
-async def getdata():
-    global previous_skins
-    global current_skins
-    try:  
-        payload = {
+payload = {
     "query": """
     query MarketList($search: MarketProductSearchInput, $forwardPagination: ForwardPaginationInput) {
       market_list(search: $search, forwardPagination: $forwardPagination) {
@@ -126,34 +112,49 @@ async def getdata():
     },
     "operationName": "MarketList"
 }
+
+
+
+import asyncio
+import aiohttp
+import logging
+
+
+
+previous_skins = set()
+current_skins = set()
+
+
+
+async def getdata():
+    global previous_skins
+    global current_skins
+    try:
+        new_skins = set()
         async with aiohttp.ClientSession() as session:
             async with session.get("https://api.white.market/graphql/api", json=payload, timeout=10) as response:
                 if response.status == 200:
                     data = await response.json()
-                    new_skins = set()
                     for obj in data["data"]["market_list"]["edges"]:
                         node = obj["node"]
-                        name = str(node["item"]["description"]["nameHash"])
+                        name = str(node["item"]["description"]["nameHash"]).strip()
                         price = str(float(node["price"]["value"]))
                         link = f"https://white.market/item/{node['slug']}"
-                        image = node["item"]["description"]["icon"]
-                        new_skins.add((name, price, link, image, "WhiteMarket"))
+                        new_skins.add((name, price, link, "WhiteMarket"))
 
-            async with lock:
-                current_skins.update(new_skins)
+        updated_skins = new_skins - previous_skins
+        previous_skins = new_skins
 
-            updated_skins = current_skins - previous_skins
-            previous_skins = current_skins.copy()
-
-            if not updated_skins:
-                return
-            else:
-                with open("textFiles/whitemarket.txt", "w", encoding="utf-8") as f:
-                    for skin in updated_skins:
-                        f.write(skin[0] + ";" + skin[1] + ";" + skin[2]+ ";" + skin[3] + ";" + skin[4] + "\n")
-                        await asyncio.sleep(0.06)
+        if not updated_skins:
+            return
+        else:
+            with open("textFiles/whitemarket.txt", "w", encoding="utf-8") as f:
+                for skin in updated_skins:
+                    f.write(skin[0] + ";" + skin[1] + ";" + skin[2]+ ";" + skin[3] + "\n")
+                    await asyncio.sleep(0.06)
     except Exception as e:
-        logging.error("Error occurred during getting data: %s", e)
+        print(e)
+ 
 
 
 async def main():
@@ -161,9 +162,10 @@ async def main():
         try:
             await getdata()
         except Exception as e:
-            logging.error("Error occurred during scraping: %s", e)
+            print(e)
         finally:
-            await asyncio.sleep(15)
+            await asyncio.sleep(10)
+
 
 
 asyncio.run(main())

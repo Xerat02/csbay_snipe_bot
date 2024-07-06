@@ -24,7 +24,7 @@ cfg = tl.cfg_load("config")
 
 # que
 message_queue = asyncio.Queue()
-processed_messages = deque(maxlen=200)
+processed_messages = deque(maxlen=1000)
 
 # discord
 intents = discord.Intents.default()
@@ -50,7 +50,7 @@ async def process_data(market_array):
                 market_risk_factor = ""
                 market_skin_name = str(market_row[0])
                 market_price = float(market_row[1])
-                market_item_link = market_row[2]
+                market_item_link = market_row[2].replace(" ", "%20")
                 market_name = market_row[3]
 
                 if market_item_link in processed_messages:
@@ -73,15 +73,22 @@ async def process_data(market_array):
                     if buff_buy_price == 0 or buff_sell_price == 0:
                         continue
                     else:
-                        buff_price = buff_buy_price if buff_buy_price != 0 else buff_sell_price
+                        buff_price = buff_sell_price if buff_sell_price != 0 else buff_buy_price
+
+                        if buff_sell_price != 0 and buff_buy_price != 0:
+                            price_diff = abs(buff_sell_price - buff_buy_price) / min(buff_sell_price, buff_buy_price)
+
+                            if price_diff > 0.10:
+                                buff_price = min(buff_sell_price, buff_buy_price)
+
                         market_risk_factor = abs((((buff_sell_price - buff_price) / buff_price) * 100))
 
                     market_price = round(market_price, 2)
-                    if market_price < buff_price:
+                    if market_price < buff_price and buff_price > 0.5:
                         buff_discount = round(((buff_price / market_price) - 1) * 100, 2)
-                        profit = round((buff_price * 0.975) - market_price, 2)
+                        profit = [round(buff_price - market_price, 2),round((buff_price * 0.975) - market_price, 2)]
 
-                        if buff_discount > 1 and profit > 0.2:
+                        if buff_discount > 4 or profit[0] > 2:
                             buff_item_link = f"https://buff.163.com/goods/{buff_id}"
                             processed_item = [
                                 buff_id, buff_skin_name, market_skin_name, market_name, buff_price, market_price,
@@ -175,10 +182,10 @@ async def update_statistics(market_name, discount, profit, message_url):
             new_message_url = data[3]
 
             if data[2] is None:
-                new_max_profit = profit
+                new_max_profit = profit[0]
             else:
-                if profit > data[2]:
-                    new_max_profit = profit
+                if profit[0] > data[2]:
+                    new_max_profit = profit[0]
                     new_message_url = message_url
                 else:
                     new_max_profit = data[2]
@@ -188,7 +195,7 @@ async def update_statistics(market_name, discount, profit, message_url):
         else:
             new_count = 1
             new_average = float(discount)
-            new_max_profit = profit  
+            new_max_profit = profit[0]  
             
             sql = """INSERT INTO snipe_statistics (market_name, snipe_count, average_discount, max_profit, msg_link)
                        VALUES (%s, %s, %s, %s, %s);"""
@@ -209,13 +216,13 @@ async def update_statistics(market_name, discount, profit, message_url):
                 time_diff = time - time_frame_data[5]
                 if time_diff.total_seconds() > x*60:
                     sql = "UPDATE snipe_time_stats SET market = %s, potencial_profit = %s, msg_link = %s, discount = %s, update_time = %s WHERE time_frame = %s;"
-                    await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, profit, message_url, discount, time, x)
+                    await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, profit[0], message_url, discount, time, x)
 
                     await asyncio.sleep(0.07)
 
-                if time_frame_data[2] < profit:
+                if time_frame_data[2] < profit[0]:
                     sql = "UPDATE snipe_time_stats SET market = %s, potencial_profit = %s, msg_link = %s, discount = %s WHERE time_frame = %s;"
-                    await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, profit, message_url, discount, x)
+                    await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, profit[0], message_url, discount, x)
             else:
                 sql = """INSERT INTO snipe_time_stats (time_frame, market, potencial_profit, msg_link, discount, update_time)
                         VALUES (%s, %s, %s, %s, %s, %s);"""
@@ -323,7 +330,7 @@ async def create_embed(data):
             risk = "Very High"
         risk = risk + " (" + str(data[10]) + " on sale)"
 
-        desc = f"**Risk:** `{risk}`\n**Market price:** ${data[5]}\n**Buff price:** ${data[4]}\n**Potencial profit:** ${data[8]} (Buff fee included)\n**Discount:** {data[6]}%\n\nBuff data was last updated <t:{data[14]}:R>"
+        desc = f"**Risk:** `{risk}`\n**Market price:** ${data[5]}\n**Buff price:** ${data[4]}\n**Potencial profit:** ${data[8][0]} / ${data[8][1]} (With buff fees) \n**Discount:** {data[6]}% ({round(100-data[6], 2)}% Buff) \n\nBuff data was last updated <t:{data[14]}:R>"
 
         embed = discord.Embed(title=header, description=desc, url=data[12])
         embed.set_thumbnail(url=data[13])
@@ -381,7 +388,7 @@ async def send_message(data):
 
         message_url = message.jump_url
 
-        if price > cfg["main"]["price_ranges"][2] and data[7] < 7 and data[6] >= 10 or data[8] > 5 :
+        if price > cfg["main"]["price_ranges"][2] and data[7] < 7 and data[6] >= 10 or data[8][1] > 5 :
             embed.colour = discord.Colour(cfg["main"]["message_colors"][3])
             message = await channel[3].send(embed=embed, view=view)
        

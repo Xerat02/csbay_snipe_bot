@@ -15,7 +15,6 @@ async def convert_currency():
 
 async def ping_server(websocket):
     while True:
-        
         try:
             await websocket.send('ping')
         except websockets.exceptions.ConnectionClosed:

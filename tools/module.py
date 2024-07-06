@@ -151,6 +151,9 @@ async def get_dollar(from_curr, amount):
         usd = usd[0]
         curr = curr / usd
         #print(amount / curr)
-        return float(amount) / float(curr)
+        if from_curr == "USD":
+            return usd
+        else:    
+            return float(amount) / float(curr)
     except Exception as e:
         exceptions(e)    

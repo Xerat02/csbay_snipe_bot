@@ -70,7 +70,7 @@ async def process_data(market_array):
                     buff_item_image = buff_row["item_image"]
                     buff_data_update_time = int(buff_row["update_time"].timestamp())
 
-                    if buff_buy_price == 0 or buff_sell_price == 0:
+                    if buff_buy_price <= 0 or buff_sell_price <= 0 or market_price <= 0:
                         continue
                     else:
                         buff_price = buff_sell_price if buff_sell_price != 0 else buff_buy_price

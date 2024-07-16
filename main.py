@@ -12,9 +12,11 @@ import aiohttp
 import asyncio
 import shutil
 import os
+import re
 import tools.module as tl
 from datetime import datetime
 from collections import deque
+from pymongo import MongoClient, UpdateOne
 
 
 
@@ -22,7 +24,7 @@ cfg = tl.cfg_load("config")
 
 # que
 message_queue = asyncio.Queue()
-processed_messages = deque(maxlen=200)
+processed_messages = deque(maxlen=1000)
 
 # discord
 intents = discord.Intents.default()
@@ -32,57 +34,80 @@ client = discord.Client(intents=intents)
 #database
 pool = None
 
+#mongoDB
+mongo_client = MongoClient(cfg["mongoDB"]["uri"])
+db = mongo_client["csbay"]
 
-async def process_data(market_skin_name, market_price, market_item_link, market_name):
+
+async def process_data(market_array):
     try:
-        market_skin_name = str(market_skin_name).lower().strip()
-        risk_factor = ""
+        collection = db["buff_items"]
 
-        db_connection = await tl.get_db_conn(pool)
-        cursor = await db_connection.cursor()
-
-        sql = "SELECT * FROM buff_skins WHERE market_hash_name = %s LIMIT 1;"
-        data = await tl.db_get_data(sql, cursor, None, market_skin_name)
-
-        for row in data:
-            buff_id = row[0]
-            buff_skin_name = str(row[1]).strip()
-            buff_price = None
-            sell_price = round(row[2],2)
-            buy_price = round(row[3], 2)
-            item_buy_num = row[4]
-            item_sell_num = row[5]
-            item_image = row[6]
-            buff_data_update_time = row[7]
-
-            buff_data_update_time = int(buff_data_update_time.timestamp())
+        for market_row in market_array:
+            market_row = market_row.split(";")
             
-            
+            if len(market_row) > 1:
+                market_risk_factor = ""
+                market_skin_name = str(market_row[0])
+                market_price = float(market_row[1])
+                market_item_link = market_row[2].replace(" ", "%20")
+                market_name = market_row[3]
 
-            if buy_price == 0 or sell_price == 0:
-                return None
-            elif buy_price == 0:
-                buff_price = sell_price
-                risk_factor = 9999
-            else:
-                buff_price = buy_price    
-                risk_factor = abs((((sell_price) - buff_price) / buff_price) * 100)            
+                if market_item_link in processed_messages:
+                    continue
+                
+                search_value = "".join(market_skin_name.split()).lower()
+                buff_row = collection.find_one({"search_name": search_value})
 
-            if market_skin_name == buff_skin_name.lower():
-                market_price = round(float(market_price), 2)
+                
+                if buff_row:
+                    buff_id = buff_row["_id"]
+                    buff_skin_name = str(buff_row["market_hash_name"]).strip()
+                    buff_sell_price = round(buff_row["price_in_usd"], 2)
+                    buff_buy_price = round(buff_row["buy_max_price"], 2)
+                    buff_item_buy_num = buff_row["buy_num"]
+                    buff_item_sell_num = buff_row["sell_num"]
+                    buff_item_image = buff_row["item_image"]
+                    buff_data_update_time = int(buff_row["update_time"].timestamp())
 
-                if market_price < buff_price:
-                    buff_discount = round(((buff_price / market_price) - 1) * 100, 2)
-                    profit = round((buff_price * 0.975) - market_price, 2)
-                    if buff_discount > 0.5 and profit > 0.01:
-                        buff_item_link = "https://buff.163.com/goods/" + str(buff_id)
-                        return [buff_id, buff_skin_name, market_skin_name, market_name, buff_price, market_price, buff_discount, risk_factor, profit, item_buy_num, item_sell_num, buff_item_link, market_item_link, item_image, buff_data_update_time]        
-        return None
+                    if buff_buy_price <= 0 or buff_sell_price <= 0 or market_price <= 0:
+                        continue
+                    else:
+                        buff_price = buff_sell_price if buff_sell_price != 0 else buff_buy_price
+
+                        if buff_sell_price != 0 and buff_buy_price != 0:
+                            price_diff = abs(buff_sell_price - buff_buy_price) / min(buff_sell_price, buff_buy_price)
+
+                            if price_diff > 0.10:
+                                buff_price = min(buff_sell_price, buff_buy_price)
+
+                        market_risk_factor = abs((((buff_sell_price - buff_price) / buff_price) * 100))
+
+                    market_price = round(market_price, 2)
+                    if market_price < buff_price and buff_price > 0.5:
+                        buff_discount = round(((buff_price / market_price) - 1) * 100, 2)
+                        profit = [round(buff_price - market_price, 2),round((buff_price * 0.975) - market_price, 2)]
+
+                        if buff_discount > 4 or profit[0] > 2:
+                            buff_item_link = f"https://buff.163.com/goods/{buff_id}"
+                            processed_item = [
+                                buff_id, buff_skin_name, market_skin_name, market_name, buff_price, market_price,
+                                buff_discount, market_risk_factor, profit, buff_item_buy_num, buff_item_sell_num,
+                                buff_item_link, market_item_link, buff_item_image, buff_data_update_time
+                            ]
+                            await message_queue.put(processed_item)
+                            processed_messages.append(processed_item[12])
+                            print(processed_item)
+                else:
+                    print("Not found!")
+                    print("-------------")
+                    print(buff_row)
+                    print(market_skin_name)  
+                    print(search_value)
+                    print(market_name)  
+                    print("-------------")              
     except Exception as e:
         tl.exceptions(e)
-        return None
-    finally:
-        await tl.release_db_conn(cursor, db_connection,pool)
 
 
 
@@ -95,18 +120,15 @@ async def process_file(filename):
     shutil.copy(filename, temp_filename)
     try:
         with open(temp_filename, "r", encoding="utf-8") as file:
-            for row in file.read().split('\n'):
-                row = str(row).split(";")
-                if len(row) > 2:
-                    data = await process_data(row[0], row[1], row[2], row[4])
-                    if data is not None:
-                        if data[12] not in processed_messages:
-                            await message_queue.put(data)
-                            processed_messages.append(data[12])
-                            print(row)
+            item_array = file.read().split("\n")
+            if len(item_array) > 0:
+                if item_array[0] != "":
+                    await process_data(item_array) #send array to process_data function        
     except Exception as e:
         tl.exceptions(e)  
-    finally:                          
+    finally:               
+        with open(filename,"w") as file:
+            pass        
         os.remove(temp_filename)                    
 
 
@@ -160,10 +182,10 @@ async def update_statistics(market_name, discount, profit, message_url):
             new_message_url = data[3]
 
             if data[2] is None:
-                new_max_profit = profit
+                new_max_profit = profit[0]
             else:
-                if profit > data[2]:
-                    new_max_profit = profit
+                if profit[0] > data[2]:
+                    new_max_profit = profit[0]
                     new_message_url = message_url
                 else:
                     new_max_profit = data[2]
@@ -173,7 +195,7 @@ async def update_statistics(market_name, discount, profit, message_url):
         else:
             new_count = 1
             new_average = float(discount)
-            new_max_profit = profit  
+            new_max_profit = profit[0]  
             
             sql = """INSERT INTO snipe_statistics (market_name, snipe_count, average_discount, max_profit, msg_link)
                        VALUES (%s, %s, %s, %s, %s);"""
@@ -194,13 +216,13 @@ async def update_statistics(market_name, discount, profit, message_url):
                 time_diff = time - time_frame_data[5]
                 if time_diff.total_seconds() > x*60:
                     sql = "UPDATE snipe_time_stats SET market = %s, potencial_profit = %s, msg_link = %s, discount = %s, update_time = %s WHERE time_frame = %s;"
-                    await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, profit, message_url, discount, time, x)
+                    await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, profit[0], message_url, discount, time, x)
 
                     await asyncio.sleep(0.07)
 
-                if time_frame_data[2] < profit:
+                if time_frame_data[2] < profit[0]:
                     sql = "UPDATE snipe_time_stats SET market = %s, potencial_profit = %s, msg_link = %s, discount = %s WHERE time_frame = %s;"
-                    await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, profit, message_url, discount, x)
+                    await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, profit[0], message_url, discount, x)
             else:
                 sql = """INSERT INTO snipe_time_stats (time_frame, market, potencial_profit, msg_link, discount, update_time)
                         VALUES (%s, %s, %s, %s, %s, %s);"""
@@ -211,9 +233,7 @@ async def update_statistics(market_name, discount, profit, message_url):
         await db_connection.rollback()
     finally:
         await tl.release_db_conn(cursor, db_connection, pool)
-
-
-
+ 
 async def find_existing_message(channel, target_title):
     try:
         async for message in channel.history(limit=100):
@@ -224,17 +244,9 @@ async def find_existing_message(channel, target_title):
     except Exception as e:
         tl.exceptions(e)
 
-
-
 async def send_statistics_embed():
     stats_channel = client.get_channel(cfg["main"]["stat_channels_id"][0])
     stats_message = await find_existing_message(stats_channel, "Market Statistics")
-
-    if stats_message is None:
-        async for message in stats_channel.history(limit=10):
-            if message.author == client.user:
-                stats_message = message
-                break
 
     while not client.is_closed():
         db_connection = await tl.get_db_conn(pool)
@@ -262,7 +274,7 @@ async def send_statistics_embed():
                 
                 def remove_trailing_zeros(x):
                     if "." in x:
-                        if x.endswith('0') or x.endswith('.'):
+                        if x.endswith("0") or x.endswith("."):
                             return(remove_trailing_zeros(x[:-1]))
                     else:
                         return(x)
@@ -285,14 +297,14 @@ async def send_statistics_embed():
                         x = time_frame / 10080
                         time_frame = remove_trailing_zeros(str(x)) + " w"     
                     
-                    embed.add_field(name=f"The best snipes in {time_frame}:", value=f"Market: {market}\nPotencial profit: ${potencial_profit} ([Jump]({msg_link}))\nDiscount: {discount}%", inline=False)
+                    embed.add_field(name=f"The best snipe in {time_frame}:", value=f"Market: {market}\nPotencial profit: ${potencial_profit} ([Jump]({msg_link}))\nDiscount: {discount}%", inline=False)
 
                 embed.set_footer(text=f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
 
-                if stats_message:
+                if stats_message:  
                     await stats_message.edit(embed=embed)
                 else:
-                    stats_message = await stats_channel.send(embed=embed)
+                    stats_message = await stats_channel.send(embed=embed)  
 
         except Exception as e:
             tl.exceptions(e)
@@ -318,7 +330,7 @@ async def create_embed(data):
             risk = "Very High"
         risk = risk + " (" + str(data[10]) + " on sale)"
 
-        desc = f"**Risk:** `{risk}`\n**Market price:** ${data[5]}\n**Buff price:** ${data[4]}\n**Potencial profit:** ${data[8]} (Buff fee included)\n**Discount:** {data[6]}%\n\nBuff data was last updated <t:{data[14]}:R>"
+        desc = f"**Risk:** `{risk}`\n**Market price:** ${data[5]}\n**Buff price:** ${data[4]}\n**Potencial profit:** ${data[8][0]} / ${data[8][1]} (With buff fees) \n**Discount:** {data[6]}% ({round(100-data[6], 2)}% Buff) \n\nBuff data was last updated <t:{data[14]}:R>"
 
         embed = discord.Embed(title=header, description=desc, url=data[12])
         embed.set_thumbnail(url=data[13])
@@ -376,7 +388,7 @@ async def send_message(data):
 
         message_url = message.jump_url
 
-        if price > cfg["main"]["price_ranges"][2] and data[7] < 7 and data[6] >= 10 or data[8] > 5 :
+        if price > cfg["main"]["price_ranges"][2] and data[7] < 7 and data[6] >= 10 or data[8][1] > 5 :
             embed.colour = discord.Colour(cfg["main"]["message_colors"][3])
             message = await channel[3].send(embed=embed, view=view)
        
@@ -384,7 +396,6 @@ async def send_message(data):
         tl.exceptions(e)
         return
     finally:
-        pass
         await update_statistics(data[3], data[6], data[8], message_url)
         await save_snipe_to_dtb(data[0], data[5], data[6], data[7], data[3], data[12])
 
@@ -429,8 +440,8 @@ async def currency_updater():
 async def on_ready():
     global pool
     pool = await tl.set_db_conn()
-    print(f'Logged on as {client.user}!')
-    await asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed())
+    print(f"Logged on as {client.user}!")
+    await asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed())#, currency_updater())
 
 
 

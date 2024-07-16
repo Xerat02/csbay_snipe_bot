@@ -15,7 +15,6 @@ async def convert_currency():
 
 async def ping_server(websocket):
     while True:
-        
         try:
             await websocket.send('ping')
         except websockets.exceptions.ConnectionClosed:
@@ -34,12 +33,11 @@ async def start():
                     parsed_data = json.loads(response)
                     inner_data = json.loads(parsed_data['data'])
 
-                    name = str(inner_data['i_market_hash_name']).replace("|","").replace("  "," ")
+                    name = str(inner_data['i_market_hash_name'])
                     price = str(round(((float(inner_data["ui_price"]))*cur_rate),3))
                     market_hash_name = str(inner_data["i_market_hash_name"]).replace(" ","%20")
                     link = "https://market.csgo.com/en/Agent/"+market_hash_name+"?id="+inner_data['ui_id']
-                    image = "https://cdn2.csgo.com/item/image/width=458/"+market_hash_name+".webp"
-                    items.append(f"{name};{price};{link};{image};Marketcsgo")
+                    items.append(f"{name};{price};{link};Marketcsgo")
             except websockets.exceptions.ConnectionClosed:
                 print("Connection with server closed")
                 break

@@ -9,14 +9,13 @@ sio = socketio.AsyncClient(ssl_verify=True)
 @sio.on('add_item')
 async def on_add_item(data):
     try:
-        name = str(data['name']).replace("|","").replace("  "," ")
+        name = str(data['name'])
         link_name = name.lower().replace("★","").replace("™","").replace("(","").replace(")","").replace(" ","-")
         price = str(round((float(data['price'])/1000),2))
         if "★" in name:
             link_name = link_name[1:]
-        link = "https://waxpeer.com/"+link_name+"/item/"+str(data['item_id'])
-        image = data['image']
-        items.append(f"{name};{price};{link};{image};Waxpeer")
+        link = "https://waxpeer.com/r/csbay/"+link_name+"/item/"+str(data['item_id'])
+        items.append(f"{name};{price};{link};Waxpeer")
     except Exception as e:
         logging.error("Error occurred during getting data: %s", e)
         await sio.disconnect()

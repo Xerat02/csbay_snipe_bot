@@ -1,15 +1,21 @@
+
 import asyncio
 import aiohttp
 import random
 import json
 import tools.module as tl
 from datetime import datetime
+from pymongo import MongoClient, UpdateOne
 
 cfg = json.load(open("configs/config.json"))
-cookies = {'session': '1-awmXwXzw6fGl5MJpP5M6Nt4d6XfjFmPEllVvUBXH6TTM2030480540'}
+cookies = {'session': '1-DWa0coDi3DXz5lQ3yFb6CDtImZE9fw3BA2v2shvvG3Rm2030480540'}
 pool = None
 cur_rate = 0
 
+mongo_client = MongoClient(cfg["mongoDB"]["uri"])
+db = mongo_client["csbay"]
+collection = db["buff_items"]
+  
 
 
 async def convert_currency():
@@ -20,44 +26,56 @@ async def convert_currency():
 
 
 async def scrape():
-    for x in range(270):
-        db_connection = await tl.get_db_conn(pool)
-        cursor = await db_connection.cursor()
-        url = "https://buff.163.com/api/market/goods/all?game=csgo&page_size=80&page_num=" + str(x + 1)
+    for x in range(300, 0, -1):
+        url = f"https://buff.163.com/api/market/goods/all?game=csgo&page_size=80&page_num={x}"
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=10, cookies=cookies) as response:
                     items = await response.json()
                     code = str(items['code']).lower()
                     if response.status == 200 and code == "ok":
-                        itemsData = items['data']
-                        for item in itemsData['items']:
+                        items_data = items['data']['items']
+                        operations = []
+
+                        for item in items_data:
                             item_id = item['id']
-                            market_hash_name = str(item['market_hash_name']).replace("|", "").replace("  ", " ")
+                            market_hash_name = str(item['market_hash_name'])
                             price_in_usd = float(item['sell_min_price']) * cur_rate
                             buy_max_price = float(item['buy_max_price']) * cur_rate
                             buy_num = int(item["buy_num"])
                             sell_num = int(item["sell_num"])
                             item_image = str(item["goods_info"]["icon_url"])
                             update_time = datetime.now()
-                            sql = "INSERT INTO buff_skins (id, market_hash_name, price_in_usd, buy_max_price, buy_num, sell_num, item_image, update_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) " \
-                                  "ON DUPLICATE KEY UPDATE market_hash_name = VALUES(market_hash_name), " \
-                                  "price_in_usd = VALUES(price_in_usd), "\
-                                  "buy_max_price = VALUES(buy_max_price), "\
-                                  "buy_num = VALUES(buy_num), "\
-                                  "sell_num = VALUES(sell_num), "\
-                                  "item_image = VALUES(item_image), "\
-                                  "update_time = VALUES(update_time)"
-                            await tl.db_manipulate_data(sql, cursor, db_connection, True, item_id, market_hash_name, price_in_usd, buy_max_price, buy_num, sell_num, item_image, update_time)
-                        print("New buff skins were successfully commited to the database! Page: "+str(x))                   
+
+                            operations.append(
+                                UpdateOne(
+                                    {'_id': item_id},
+                                    {
+                                        '$set': {
+                                            'market_hash_name': market_hash_name,
+                                            'search_name': market_hash_name.replace(" ", "").replace("\t", "").replace("\n", "").replace("\r", "").lower(),
+                                            'price_in_usd': price_in_usd,
+                                            'buy_max_price': buy_max_price,
+                                            'buy_num': buy_num,
+                                            'sell_num': sell_num,
+                                            'item_image': item_image,
+                                            'update_time': update_time
+                                        }
+                                    },
+                                    upsert=True
+                                )
+                            )
+                        
+                        if operations:
+                            result = collection.bulk_write(operations)
+                            print(f"Page {x+1}: {result.upserted_count} items upserted, {result.modified_count} items modified.")
+        
         except Exception as e:
             tl.exceptions(e)
             return
         finally:
-            await tl.release_db_conn(cursor,db_connection,pool)
-            print("Response status: "+str(response.status)+"\nCode message: "+code)
+            print(f"Response status: {response.status}\nCode message: {code}")
             await asyncio.sleep(random.randrange(14, 28))
-     
      
 
 async def main():

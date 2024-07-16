@@ -10,11 +10,10 @@ sio = socketio.AsyncClient(ssl_verify=True)
 @sio.on('saleFeed')
 async def on_sale_feed(result):
     try:
-        name = str(result["sales"][0]["marketHashName"]).replace("|", "").replace("  "," ")
+        name = str(result["sales"][0]["marketHashName"])
         price = str(result["sales"][0]["salePrice"] / 100)
         link = "https://skinport.com/item/" + result["sales"][0]["url"] + "/" + str(result["sales"][0]["saleId"])
-        image = "https://community.cloudflare.steamstatic.com/economy/image/" + str(result["sales"][0]["image"])
-        skins.append(name + ";" + price + ";" + link + ";" + image + ";Skinport")
+        skins.append(name + ";" + price + ";" + link + ";Skinport")
     except Exception as e:
         logging.error("Error occurred during getting data: %s", e)
         await sio.disconnect()

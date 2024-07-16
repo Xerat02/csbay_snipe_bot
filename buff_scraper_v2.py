@@ -3,7 +3,7 @@ import asyncio
 import aiohttp
 import random
 import json
-import tools.module as tl
+import markets_scripts.tools.module as tl
 from datetime import datetime
 from pymongo import MongoClient, UpdateOne
 

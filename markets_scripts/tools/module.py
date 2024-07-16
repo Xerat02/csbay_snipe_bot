@@ -5,11 +5,14 @@ import logging
 import os
 import sys
 import json
+from pymongo import MongoClient, UpdateOne
+
 
 
 #######################################
 # Expection function
 #######################################
+
 
 
 def exceptions(e, level=logging.ERROR, log_file=None):
@@ -41,9 +44,12 @@ def exceptions(e, level=logging.ERROR, log_file=None):
     logger.log(level, log_message)
     time.sleep(0.3)
 
+
+
 #######################################
 # Config load function
 #######################################
+
 
 
 def cfg_load(file_name, dir = "configs/"):
@@ -54,11 +60,16 @@ def cfg_load(file_name, dir = "configs/"):
     except Exception as e:
         exceptions(e)    
 
+
+
 cfg = cfg_load("config")
+
+
 
 #######################################
 # Database releated functions
 #######################################
+
 
 
 #database connection function
@@ -79,6 +90,7 @@ async def set_db_conn():
         return None
 
 
+
 #function that start database connection
 async def get_db_conn(pool):
     try:
@@ -88,6 +100,7 @@ async def get_db_conn(pool):
         exceptions(e)
         return None
     
+
 
 #fuction that release current database connection
 async def release_db_conn(cursor, db_conn, pool):
@@ -135,20 +148,21 @@ async def db_manipulate_data(sql, cursor, db_conn, commit, *args, **kwargs):
         exceptions(e)
         
 
+
+
 #######################################
 # Currency function
 #######################################
 
+
+
 async def get_dollar(from_curr, amount):
-    db_connection = await get_db_conn(await set_db_conn()) 
-    cursor = await db_connection.cursor()
+    mongo_client = MongoClient(cfg["mongoDB"]["uri"])
+    db = mongo_client["csbay"]
+    collection = db["currency"]
     try:
-        sql = "SELECT value FROM currency WHERE currency_name = %s;"
-        curr = await db_get_data(sql, cursor, 1, from_curr)
-        curr = curr[0]
-        sql = "SELECT value FROM currency WHERE currency_name = 'USD';"
-        usd = await db_get_data(sql, cursor, 1)
-        usd = usd[0]
+        curr = float(collection.find_one({"_id": from_curr}).get("value"))
+        usd = float(collection.find_one({"_id": "USD"}).get("value"))
         curr = curr / usd
         #print(amount / curr)
         if from_curr == "USD":

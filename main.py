@@ -13,8 +13,8 @@ import asyncio
 import shutil
 import os
 import re
-import tools.module as tl
-from datetime import datetime
+import markets_scripts.tools.module as tl
+from datetime import datetime, timedelta
 from collections import deque
 from pymongo import MongoClient, UpdateOne
 
@@ -244,6 +244,9 @@ async def find_existing_message(channel, target_title):
     except Exception as e:
         tl.exceptions(e)
 
+
+
+
 async def send_statistics_embed():
     stats_channel = client.get_channel(cfg["main"]["stat_channels_id"][0])
     stats_message = await find_existing_message(stats_channel, "Market Statistics")
@@ -399,13 +402,18 @@ async def send_message(data):
         await update_statistics(data[3], data[6], data[8], message_url)
         await save_snipe_to_dtb(data[0], data[5], data[6], data[7], data[3], data[12])
 
+
+
+
+#functions that will get latest currency rates
 async def currency_updater():
     while not client.is_closed():
-        db_connection = await tl.get_db_conn(pool)
-        cursor = await db_connection.cursor()
+        collection = db["currency"]
+
         token = cfg["main"]["currency_updater_token"]
         symbols = ["CNY", "RUB", "USD"]
         url = f"http://data.fixer.io/api/latest?access_key={token}&symbols="
+        update = False
         try:
             for i in range(0, len(symbols)):
                 if i == (len(symbols) - 1):
@@ -413,35 +421,44 @@ async def currency_updater():
                 else:
                     url += symbols[i] + ", "
 
-            sql_select = "SELECT * FROM currency WHERE currency_name = %s;"
-            sql_insert = """INSERT INTO currency (currency_name, value) VALUES (%s, %s);"""
-            sql_update = """UPDATE currency SET value = %s WHERE currency_name = %s;"""
+            for symbol in symbols:
+                update_time = collection.find_one({"_id": symbol}).get("update_time")
+                if update_time == None or abs(datetime.now() - update_time) > timedelta(days=1):
+                   update = True
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=30) as response:
-                    response_data = await response.json()
-                    if response.status == 200 and response_data["success"]:
-                        for symbol in symbols:
-                            currency_value = response_data["rates"][symbol]
-                            if currency_value is not None:
-                                existing_currency = await tl.db_get_data(sql_select, cursor, 1, symbol)
+            if update:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=30) as response:
+                        response_data = await response.json()
+                        if response.status == 200 and response_data["success"]:
+                            for symbol in symbols:
+                                currency_value = response_data["rates"][symbol]
+                                if currency_value != None:
+                                    collection.update_one(
+                                        {"_id": symbol},
+                                        {
+                                            "$set": {
+                                                "value": currency_value,
+                                                "update_time": datetime.now()
+                                            }
+                                        },
+                                        upsert=True
+                                    )
 
-                                if existing_currency:
-                                    await tl.db_manipulate_data(sql_update, cursor, db_connection, True, currency_value, symbol)
-                                else:
-                                    await tl.db_manipulate_data(sql_insert, cursor, db_connection, True, symbol, currency_value)
         except Exception as e:
             tl.exceptions(e)  
         finally:
              await asyncio.sleep(cfg["main"]["currency_updater_delay"])   
 
 
+
+#main discord run function
 @client.event
 async def on_ready():
     global pool
     pool = await tl.set_db_conn()
     print(f"Logged on as {client.user}!")
-    await asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed())#, currency_updater())
+    await asyncio.gather(currency_updater())
 
 
 

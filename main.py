@@ -13,7 +13,7 @@ import asyncio
 import shutil
 import os
 import re
-import markets_scripts.tools.module as tl
+import tools.module as tl
 from datetime import datetime, timedelta
 from collections import deque
 from pymongo import MongoClient, UpdateOne
@@ -159,81 +159,144 @@ async def send_message_worker():
 
 
 async def update_statistics(market_name, discount, profit, message_url):
-    db_connection = await tl.get_db_conn(pool)
-    cursor = await db_connection.cursor()
+    collection = db["snipe_statistic"]
     new_count = None  
     new_average = None  
     new_max_profit = None
     
     try:
-        await db_connection.begin()
-        
-        sql = """SELECT snipe_count, average_discount, max_profit, msg_link
-                   FROM snipe_statistics 
-                   WHERE market_name = %s 
-                   FOR UPDATE;"""
-        data = await tl.db_get_data(sql, cursor, 1, market_name)
+        data = collection.find_one({"_id": market_name})
 
         #general snipe data
         if data:
-            new_count = data[0] + 1
-            new_average = float(((data[1] * data[0]) + discount) / new_count)
-            new_average = round(new_average, 2)
-            new_message_url = data[3]
+            old_count = data.get("count", 1) 
+            old_average = data.get("average", 0)   
+            old_potencial_profit = data.get("potencial_profit")
 
-            if data[2] is None:
+            new_count = old_count + 1
+            new_average = float(((old_average * old_count) + discount) / new_count)
+            new_average = round(new_average, 2)
+            new_message_url = data.get("message_url")
+
+            if old_potencial_profit == None:
                 new_max_profit = profit[0]
             else:
-                if profit[0] > data[2]:
+                if profit[0] > old_potencial_profit:
                     new_max_profit = profit[0]
                     new_message_url = message_url
                 else:
-                    new_max_profit = data[2]
-            
-            sql = "UPDATE snipe_statistics SET snipe_count = %s, average_discount = %s, max_profit = %s, msg_link = %s WHERE market_name = %s;"
-            await tl.db_manipulate_data(sql, cursor, db_connection, False, new_count, new_average, new_max_profit, new_message_url, market_name)
+                    new_max_profit = old_potencial_profit
+
+
+            collection.update_one(
+                {"_id": market_name},
+                {
+                    "$set": {
+                                "count": new_count,
+                                "average": new_average,
+                                "max_profit": new_max_profit,
+                                "message_url": new_message_url,
+                                "update_time": datetime.now(),
+                            }
+                },
+                upsert=True
+            )
+
+            last_hour_count = data.get("last_hour_count", data.get("count"))
+            last_hour_update_time = data.get("last_hour_update_time")
+
+            if abs(datetime.now() - last_hour_update_time) > timedelta(hours=1):
+                collection.update_one(
+                    {"_id": symbol},
+                    {
+                        "$set": {
+                                    "last_hour_count": data.get("count") - last_hour_count,
+                                    "last_hour_update_time": datetime.now()
+                                }
+                    },
+                    upsert=True
+                )    
         else:
             new_count = 1
             new_average = float(discount)
             new_max_profit = profit[0]  
-            
-            sql = """INSERT INTO snipe_statistics (market_name, snipe_count, average_discount, max_profit, msg_link)
-                       VALUES (%s, %s, %s, %s, %s);"""
-            await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, new_count, new_average, new_max_profit, message_url)
+
+            collection.update_one(
+                {"_id": market_name},
+                {
+                    "$set": {
+                                "count": new_count,
+                                "last_hour_count": new_count,
+                                "average": new_average,
+                                "max_profit": new_max_profit,
+                                "message_url": message_url,
+                                "update_time": datetime.now(),
+                                "last_hour_update_time": datetime.now()
+                            }
+                },
+                upsert=True
+            )
+
+
 
         #time snipe data (1 min, 10min, 1h, 1d, 1w)
         for x in cfg["main"]["stats_time_frames"]:
             time = datetime.now()
-            sql = """SELECT time_frame, market, potencial_profit, msg_link, discount, update_time
-                    FROM snipe_time_stats
-                    WHERE time_frame = %s
-                    FOR UPDATE;"""
-            time_frame_data = await tl.db_get_data(sql, cursor, 1, x)
+            time_frame_data = collection.find_one({"_id": x})
             
             x = int(x)
 
             if time_frame_data:
-                time_diff = time - time_frame_data[5]
+                time_diff = time - time_frame_data.get("update_time")
                 if time_diff.total_seconds() > x*60:
-                    sql = "UPDATE snipe_time_stats SET market = %s, potencial_profit = %s, msg_link = %s, discount = %s, update_time = %s WHERE time_frame = %s;"
-                    await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, profit[0], message_url, discount, time, x)
+                    collection.update_one(
+                        {"_id": x},
+                        {
+                            "$set": {
+                                        "market": market_name,
+                                        "potencial_profit": profit[0],
+                                        "message_url": message_url,
+                                        "discount": discount,
+                                        "update_time": time,
+                                    }
+                        },
+                        upsert=True
+                    )
 
                     await asyncio.sleep(0.07)
 
-                if time_frame_data[2] < profit[0]:
-                    sql = "UPDATE snipe_time_stats SET market = %s, potencial_profit = %s, msg_link = %s, discount = %s WHERE time_frame = %s;"
-                    await tl.db_manipulate_data(sql, cursor, db_connection, False, market_name, profit[0], message_url, discount, x)
+                if time_frame_data.get("potencial_profit", 0) < profit[0]:
+                    collection.update_one(
+                        {"_id": x},
+                        {
+                            "$set": {
+                                        "market": market_name,
+                                        "potencial_profit": profit[0],
+                                        "message_url": message_url,
+                                        "discount": discount,
+                                    }
+                        },
+                        upsert=True
+                    )
             else:
-                sql = """INSERT INTO snipe_time_stats (time_frame, market, potencial_profit, msg_link, discount, update_time)
-                        VALUES (%s, %s, %s, %s, %s, %s);"""
-                await tl.db_manipulate_data(sql, cursor, db_connection, False, x, market_name, profit, message_url, discount, time)        
-        await db_connection.commit()
+                collection.update_one(
+                        {"_id": x},
+                        {
+                            "$set": {
+                                        "market": market_name,
+                                        "potencial_profit": profit[0],
+                                        "message_url": message_url,
+                                        "discount": discount,
+                                        "update_time": time,
+                                    }
+                        },
+                        upsert=True
+                )   
     except Exception as e:
         tl.exceptions(e)
-        await db_connection.rollback()
-    finally:
-        await tl.release_db_conn(cursor, db_connection, pool)
- 
+
+
+
 async def find_existing_message(channel, target_title):
     try:
         async for message in channel.history(limit=100):
@@ -458,7 +521,7 @@ async def on_ready():
     global pool
     pool = await tl.set_db_conn()
     print(f"Logged on as {client.user}!")
-    await asyncio.gather(currency_updater())
+    await asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed(), currency_updater())
 
 
 

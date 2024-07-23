@@ -72,16 +72,18 @@ async def send_statistics_embed():
                         embed1.add_field(name=f"{row.get('_id')}", value=f"📚 Recorded snipes: {row.get('count')} (*+{row.get('count') - row.get('last_hour_count')} last hour*)\n🔖 Average Discount: {row.get('average')}%\n💵 Max recorded profit: ${row.get('max_profit')} ([Jump]({row.get('message_url')}))", inline=False)
 
                     # Embed 2: Hourly Activity Levels
-                    embed2 = discord.Embed(title="Hourly Activity Levels", description="Bot timezone is GMT+2\n[Compare it with your time](https://time.is/compare/GMT+2)\nActivity level = ⭐\n Profitability Level = 💰", color=discord.Color.red())
+                    embed2 = discord.Embed(title="Hourly Activity Levels", description="Activity level = ⭐\n Profitability Level = 💰", color=discord.Color.red())
                     for row in hour_data:
                         activity_indicator = "⭐" * int(round(row.get("busyness_percentage", 0) / 2))
                         profit_indicator = "💰" * int(round(row.get("profit_percentage", 0) / 2))
                         hour = f"{row.get('_id'):02d}:00"
                         value = f"{activity_indicator}\n{profit_indicator}"
-                        if datetime.now().hour == row.get("_id"):
-                            embed2.add_field(name=f"> __**{hour}**__", value=value, inline=False)
+
+                        now = datetime.now()    
+                        if now.hour == row.get("_id"):
+                            embed2.add_field(name=f"> __<t:{int(now.timestamp())}:t>__", value=value, inline=False)
                         else:
-                            embed2.add_field(name=f"> {hour}", value=value, inline=False)
+                            embed2.add_field(name=f"> <t:{(int(now.timestamp()) + ((int(row.get('_id')) - 1) * 3600) - (now.minute*60))}:t>", value=value, inline=False)
                     embed2.set_footer(text=f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
 
                     # Embed 3: Most Common Snipes

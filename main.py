@@ -6,7 +6,6 @@
 #
 ####################################
 
-import discord
 import aiomysql
 import aiohttp
 import asyncio
@@ -17,28 +16,26 @@ import tools.module as tl
 from datetime import datetime, timedelta
 from collections import deque
 from pymongo import MongoClient, UpdateOne
+from pymongo.errors import DuplicateKeyError
+
+
+#variable that stores latest snipes
+processed_messages = deque(maxlen=300)
 
 
 
+#config
 cfg = tl.cfg_load("config")
 
-# que
-message_queue = asyncio.Queue()
-processed_messages = deque(maxlen=1000)
 
-# discord
-intents = discord.Intents.default()
-intents.message_content = True
-client = discord.Client(intents=intents)
-
-#database
-pool = None
 
 #mongoDB
 mongo_client = MongoClient(cfg["mongoDB"]["uri"])
 db = mongo_client["csbay"]
 
 
+
+#main function that processing new offers and saving them into the database
 async def process_data(market_array):
     try:
         collection = db["buff_items"]
@@ -68,7 +65,7 @@ async def process_data(market_array):
                     buff_item_buy_num = buff_row["buy_num"]
                     buff_item_sell_num = buff_row["sell_num"]
                     buff_item_image = buff_row["item_image"]
-                    buff_data_update_time = int(buff_row["update_time"].timestamp())
+                    buff_data_update_time = buff_row["update_time"]
 
                     if buff_buy_price <= 0 or buff_sell_price <= 0 or market_price <= 0:
                         continue
@@ -88,29 +85,44 @@ async def process_data(market_array):
                         buff_discount = round(((buff_price / market_price) - 1) * 100, 2)
                         profit = [round(buff_price - market_price, 2),round((buff_price * 0.975) - market_price, 2)]
 
+                        #if item is good item will be saved into the database   
                         if buff_discount > 4 or profit[0] > 2:
-                            buff_item_link = f"https://buff.163.com/goods/{buff_id}"
-                            processed_item = [
-                                buff_id, buff_skin_name, market_skin_name, market_name, buff_price, market_price,
-                                buff_discount, market_risk_factor, profit, buff_item_buy_num, buff_item_sell_num,
-                                buff_item_link, market_item_link, buff_item_image, buff_data_update_time
-                            ]
-                            await message_queue.put(processed_item)
-                            processed_messages.append(processed_item[12])
-                            print(processed_item)
-                else:
-                    print("Not found!")
-                    print("-------------")
-                    print(buff_row)
-                    print(market_skin_name)  
-                    print(search_value)
-                    print(market_name)  
-                    print("-------------")              
+                            item_data = {
+                                "_id": market_item_link,  
+                                "item_name": buff_skin_name,
+                                "market_name": market_name,
+                                "buff_price": buff_price,
+                                "market_price": market_price,
+                                "buff_discount": buff_discount,
+                                "market_risk_factor": market_risk_factor,
+                                "profit": profit,
+                                "buff_item_sell_num": buff_item_sell_num,
+                                "buff_item_link": f"https://buff.163.com/goods/{buff_id}",
+                                "buff_item_image": buff_item_image,
+                                "buff_data_update_time": buff_data_update_time,
+                                "inserted_time": datetime.now()
+                            }
+                            print(item_data)
+                            await update_statistics(item_name=buff_skin_name, market_name=market_name, discount=buff_discount, profit=profit, message_url=market_item_link)
+                            processed_messages.append(market_item_link)
+                            try:
+                                db["snipe_processed_items"].insert_one(item_data)
+                            except DuplicateKeyError:
+                                pass 
+                #else:
+                #    print("Not found!")
+                #    print("-------------")
+                #    print(buff_row)
+                #    print(market_skin_name)  
+                #    print(search_value)
+                #    print(market_name)  
+                #    print("-------------")              
     except Exception as e:
         tl.exceptions(e)
 
 
 
+#fuction that reads data from market script files and executing process_data function with that data
 async def process_file(filename):
     temp_folder = cfg["main"]["temp_files_location"]
     if not os.path.exists(temp_folder):
@@ -133,33 +145,21 @@ async def process_file(filename):
 
 
 
-async def send_latest_offers():
-    await client.wait_until_ready()
-    while not client.is_closed():
-        try:
+#function that running process data function in the threads
+async def latest_offers():
+    try:
+        while True:
             tasks = [process_file("textFiles/"+filename) for filename in cfg["main"]["files"]]            
             await asyncio.gather(*tasks)            
             await asyncio.sleep(cfg["main"]["offers_check_delay"])            
-        except Exception as e:
-            tl.exceptions(e)
+    except Exception as e:
+        tl.exceptions(e)
 
 
 
-async def send_message_worker():
-    while True:
-        if not message_queue.empty():
-            try:
-                await send_message(await message_queue.get())
-            except Exception as e:
-                tl.exceptions(e)
-            finally:
-                message_queue.task_done()
-        await asyncio.sleep(cfg["main"]["message_send_delay"])
-
-
-
-async def update_statistics(market_name, discount, profit, message_url):
-    collection = db["snipe_statistic"]
+#function that updating individual markets statistics
+async def update_statistics(item_name, market_name, discount, profit, message_url):
+    collection = db["snipe_statistic_market_data"]
     new_count = None  
     new_average = None  
     new_max_profit = None
@@ -172,11 +172,13 @@ async def update_statistics(market_name, discount, profit, message_url):
             old_count = data.get("count", 1) 
             old_average = data.get("average", 0)   
             old_potencial_profit = data.get("potencial_profit")
+            old_total_profit = data.get("total_profit", 0)
 
             new_count = old_count + 1
             new_average = float(((old_average * old_count) + discount) / new_count)
             new_average = round(new_average, 2)
             new_message_url = data.get("message_url")
+            new_total_profit = old_total_profit + profit[0]
 
             if old_potencial_profit == None:
                 new_max_profit = profit[0]
@@ -195,6 +197,7 @@ async def update_statistics(market_name, discount, profit, message_url):
                                 "count": new_count,
                                 "average": new_average,
                                 "max_profit": new_max_profit,
+                                "total_profit": new_total_profit,
                                 "message_url": new_message_url,
                                 "update_time": datetime.now(),
                             }
@@ -202,15 +205,14 @@ async def update_statistics(market_name, discount, profit, message_url):
                 upsert=True
             )
 
-            last_hour_count = data.get("last_hour_count", data.get("count"))
             last_hour_update_time = data.get("last_hour_update_time")
 
             if abs(datetime.now() - last_hour_update_time) > timedelta(hours=1):
                 collection.update_one(
-                    {"_id": symbol},
+                    {"_id": market_name},
                     {
                         "$set": {
-                                    "last_hour_count": data.get("count") - last_hour_count,
+                                    "last_hour_count": data.get("count", 0),
                                     "last_hour_update_time": datetime.now()
                                 }
                     },
@@ -226,9 +228,10 @@ async def update_statistics(market_name, discount, profit, message_url):
                 {
                     "$set": {
                                 "count": new_count,
-                                "last_hour_count": new_count,
+                                "last_hour_count": 0,
                                 "average": new_average,
                                 "max_profit": new_max_profit,
+                                "total_profit": profit[0],
                                 "message_url": message_url,
                                 "update_time": datetime.now(),
                                 "last_hour_update_time": datetime.now()
@@ -240,6 +243,7 @@ async def update_statistics(market_name, discount, profit, message_url):
 
 
         #time snipe data (1 min, 10min, 1h, 1d, 1w)
+        collection = db["snipe_statistic_time_frame"]
         for x in cfg["main"]["stats_time_frames"]:
             time = datetime.now()
             time_frame_data = collection.find_one({"_id": x})
@@ -291,188 +295,136 @@ async def update_statistics(market_name, discount, profit, message_url):
                                     }
                         },
                         upsert=True
-                )   
-    except Exception as e:
-        tl.exceptions(e)
+                )
 
+        #most common items      
+        collection = db["snipe_statistic_item_snipes"]
+        item = collection.find_one({"_id": item_name})
 
-
-async def find_existing_message(channel, target_title):
-    try:
-        async for message in channel.history(limit=100):
-            for embed in message.embeds:
-                if embed.title == target_title:
-                    return message
-        return None
-    except Exception as e:
-        tl.exceptions(e)
-
-
-
-
-async def send_statistics_embed():
-    stats_channel = client.get_channel(cfg["main"]["stat_channels_id"][0])
-    stats_message = await find_existing_message(stats_channel, "Market Statistics")
-
-    while not client.is_closed():
-        db_connection = await tl.get_db_conn(pool)
-        cursor = await db_connection.cursor()
-
-        try:
-            sql = """SELECT market_name, snipe_count, average_discount, max_profit, msg_link
-                       FROM snipe_statistics
-                       ORDER BY snipe_count DESC;"""
-            data = await tl.db_get_data(sql, cursor, None)
-
-            sql = """SELECT time_frame, market, potencial_profit, msg_link, discount
-            FROM snipe_time_stats
-            ORDER BY time_frame ASC;"""
-            time_frame_data = await tl.db_get_data(sql, cursor, None)
-
-            if data and time_frame_data:
-                embed = discord.Embed(title="Market Statistics", description="Here are the latest stats:", color=discord.Color.blue())
-
-                for row in data:
-                    market_name, snipe_count, average_discount, max_profit, msg_link = row
-                    embed.add_field(name=f"{market_name}", value=f"📚 Snipe Count: {snipe_count}\n🔖 Average Discount: {average_discount}%\n💵 Max recorded profit: ${max_profit} ([Jump]({msg_link}))", inline=False)
-
-                embed.add_field(name="",value="")
-                
-                def remove_trailing_zeros(x):
-                    if "." in x:
-                        if x.endswith("0") or x.endswith("."):
-                            return(remove_trailing_zeros(x[:-1]))
-                    else:
-                        return(x)
-                       
-                    
-                for row in time_frame_data:
-                    time_frame, market, potencial_profit, msg_link, discount = row
-
-                    x = 0    
-                    if time_frame < 60:
-                        x = time_frame
-                        time_frame = remove_trailing_zeros(str(x)) + " min"
-                    elif time_frame / 60 < 24:
-                        x = time_frame / 60
-                        time_frame = remove_trailing_zeros(str(x)) + " h" 
-                    elif time_frame / 1440 < 7:
-                        x = time_frame / 1440
-                        time_frame = remove_trailing_zeros(str(x)) + " d"
-                    elif time_frame / 10080 < 5:
-                        x = time_frame / 10080
-                        time_frame = remove_trailing_zeros(str(x)) + " w"     
-                    
-                    embed.add_field(name=f"The best snipe in {time_frame}:", value=f"Market: {market}\nPotencial profit: ${potencial_profit} ([Jump]({msg_link}))\nDiscount: {discount}%", inline=False)
-
-                embed.set_footer(text=f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
-
-                if stats_message:  
-                    await stats_message.edit(embed=embed)
-                else:
-                    stats_message = await stats_channel.send(embed=embed)  
-
-        except Exception as e:
-            tl.exceptions(e)
-
-        finally:
-            await tl.release_db_conn(cursor, db_connection, pool)
-
-        await asyncio.sleep(cfg["main"]["statistic_message_update_delay"])
-
-
-
-async def create_embed(data):
-    header = data[1]
-    risk = data[7]
-    try:
-        if risk < cfg["main"]["risk_ranges"][0]:
-            risk = "Low"
-        elif risk < cfg["main"]["risk_ranges"][0]:
-            risk = "Medium"
-        elif risk < cfg["main"]["risk_ranges"][0]:
-            risk = "High"
+        if item:
+            collection.update_one(
+                {"_id": item_name},
+                {
+                    "$set": {
+                                "average_discount": (item.get("average_discount") + discount) / item.get("count"),
+                                "count": item.get("count") + 1
+                            }
+                },
+                upsert=True
+            )
         else:
-            risk = "Very High"
-        risk = risk + " (" + str(data[10]) + " on sale)"
-
-        desc = f"**Risk:** `{risk}`\n**Market price:** ${data[5]}\n**Buff price:** ${data[4]}\n**Potencial profit:** ${data[8][0]} / ${data[8][1]} (With buff fees) \n**Discount:** {data[6]}% ({round(100-data[6], 2)}% Buff) \n\nBuff data was last updated <t:{data[14]}:R>"
-
-        embed = discord.Embed(title=header, description=desc, url=data[12])
-        embed.set_thumbnail(url=data[13])
-        embed.timestamp = datetime.utcnow()
-        footer_text = data[3]
-        embed.set_footer(text=footer_text, icon_url=cfg["main"]["icons_urls"].get(data[3], ""))
-        return embed
-    except Exception as e:
-        tl.exceptions(e)
-
-
-
-async def save_snipe_to_dtb(buff_id, price, discount, risk_factor, market_name, offer_link):
-    try:
-        release_datetime = datetime.now()
-        db_connection = await tl.get_db_conn(pool) 
-        cursor = await db_connection.cursor()
-        sql = """INSERT INTO snipes (buff_id, price, discount, risk_factor, market_name, offer_link, release_datetime)
-        VALUES (%s, %s, %s, %s, %s, %s, %s);"""
-        await tl.db_manipulate_data(sql, cursor, db_connection, True, buff_id, price, discount, risk_factor, market_name, offer_link, release_datetime)
+            collection.update_one(
+                {"_id": item_name},
+                {
+                    "$set": {
+                                "average_discount": discount,
+                                "count": 1
+                            }
+                },
+                upsert=True
+            )    
     except Exception as e:
         tl.exceptions(e)
     finally:
-        await tl.release_db_conn(cursor, db_connection, pool)   
+        await update_total_statistics(profit[0])
 
 
 
-async def send_message(data):
-    message = None
-    message_url = None
+#function that updating total markets statistics
+async def update_total_statistics(profit):
+    collection = db["snipe_statistic_market_data"]
+    
     try:
-        if not data:
-            return
-        
-        channel = [client.get_channel(cfg["main"]["snipe_channels_id"][0]),client.get_channel(cfg["main"]["snipe_channels_id"][1]),client.get_channel(cfg["main"]["snipe_channels_id"][2]),client.get_channel(cfg["main"]["snipe_channels_id"][3])]
-        embed = await create_embed(data)
+        market_data = list(collection.find().sort({"max_profit": -1}))
+        if len(market_data) > 0:
+            collection = db["snipe_statistic"]
 
-        market_button = discord.ui.Button(label="Check it",style=discord.ButtonStyle.url,url=data[12])
-        buff_button = discord.ui.Button(label="Buff price",style=discord.ButtonStyle.url,url=data[11])
-        view = discord.ui.View()
-        view.add_item(market_button)
-        view.add_item(buff_button)
+            count = 0
+            hour_count = 0
+            average = 0
+            total_profit = 0
 
-        price = data[5]
+            for value in market_data:
+                count = count + value.get("count", 0)
+                hour_count = hour_count + (value.get("count") - value.get("last_hour_count"))
+                average = average + value.get("average", 0)
+                total_profit = total_profit + value.get("total_profit", 0)
+            average = average / len(market_data)
 
-        if price <= cfg["main"]["price_ranges"][0]:
-            embed.colour = discord.Colour(cfg["main"]["message_colors"][0])
-            message = await channel[0].send(embed=embed, view=view)
-        elif price < cfg["main"]["price_ranges"][1]:
-            embed.colour = discord.Colour(cfg["main"]["message_colors"][1])
-            message = await channel[1].send(embed=embed, view=view)
-        else:     
-            embed.colour = discord.Colour(cfg["main"]["message_colors"][2])
-            message = await channel[2].send(embed=embed, view=view)
+            collection.update_one(
+                {"_id": "All markets"},
+                {
+                    "$set": {
+                                "count": count,
+                                "average": average,
+                                "max_profit": market_data[0].get("max_profit"),
+                                "total_profit": total_profit,
+                                "message_url": market_data[0].get("message_url"),
+                                "update_time": datetime.now(),
+                            }
+                },
+                upsert=True
+            )
 
-        message_url = message.jump_url
+            #hour time stats
+            collection = db["snipe_statistic_hour_data"]
+            hour_data = list(collection.find())
 
-        if price > cfg["main"]["price_ranges"][2] and data[7] < 7 and data[6] >= 10 or data[8][1] > 5 :
-            embed.colour = discord.Colour(cfg["main"]["message_colors"][3])
-            message = await channel[3].send(embed=embed, view=view)
-       
+            if len(hour_data) > 0 and count != 0:
+                curent_hour_data = collection.find_one({"_id": datetime.now().hour})
+                if curent_hour_data:
+                    curent_hour_data_new_count = curent_hour_data.get("count", 0) + 1
+                    curent_hour_data_new_total_profit = curent_hour_data.get("total_profit", 0) + profit
+                    collection.update_one(
+                        {"_id": float(datetime.now().hour)},
+                        {
+                            "$set": {
+                                        "count": curent_hour_data_new_count,
+                                        "total_profit": curent_hour_data_new_total_profit
+                                    }
+                        },
+                        upsert=True
+                    )
+
+                busyness_percentage = 0
+                profit_percentage = 0
+                for x in hour_data:
+                    busyness_percentage = busyness_percentage + x.get("count", 0)
+                    profit_percentage = profit_percentage + x.get("total_profit", 0)
+                busyness_percentage = 100 / busyness_percentage   
+                profit_percentage = 100 / profit_percentage   
+
+                for x in hour_data:
+                    collection.update_one(
+                        {"_id": x.get("_id")},
+                        {
+                            "$set": {
+                                        "busyness_percentage": round((busyness_percentage * x.get("count")), 2),
+                                        "profit_percentage": round((profit_percentage * x.get("total_profit", 0)), 2)
+                                    }
+                        },
+                        upsert=True
+                    )        
+            else:
+                for x in range(0, 24, 1):
+                    collection.update_one(
+                        {"_id": x},
+                        {
+                            "$set": {
+                                        "count": 0,
+                                    }
+                        },
+                        upsert=True
+                    )
     except Exception as e:
-        tl.exceptions(e)
-        return
-    finally:
-        await update_statistics(data[3], data[6], data[8], message_url)
-        await save_snipe_to_dtb(data[0], data[5], data[6], data[7], data[3], data[12])
+        tl.exceptions(e)        
 
 
 
-
-#functions that will get latest currency rates
+#functions that every 24h updating currency in the database
 async def currency_updater():
-    while not client.is_closed():
+    while True:
         collection = db["currency"]
-
         token = cfg["main"]["currency_updater_token"]
         symbols = ["CNY", "RUB", "USD"]
         url = f"http://data.fixer.io/api/latest?access_key={token}&symbols="
@@ -483,12 +435,10 @@ async def currency_updater():
                     url += symbols[i]
                 else:
                     url += symbols[i] + ", "
-
             for symbol in symbols:
                 update_time = collection.find_one({"_id": symbol}).get("update_time")
                 if update_time == None or abs(datetime.now() - update_time) > timedelta(days=1):
                    update = True
-
             if update:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url, timeout=30) as response:
@@ -507,7 +457,6 @@ async def currency_updater():
                                         },
                                         upsert=True
                                     )
-
         except Exception as e:
             tl.exceptions(e)  
         finally:
@@ -515,20 +464,12 @@ async def currency_updater():
 
 
 
-#main discord run function
-@client.event
-async def on_ready():
-    global pool
-    pool = await tl.set_db_conn()
-    print(f"Logged on as {client.user}!")
-    await asyncio.gather(send_latest_offers(), send_message_worker(), send_statistics_embed(), currency_updater())
+#run scripts
+async def main():
+    await asyncio.gather(latest_offers(),currency_updater())
 
 
 
-@client.event
-async def on_close():
-    await tl.close_db_conn(pool)
-
-
-
-client.run(cfg["main"]["discord_client_token"])
+#run main function
+if __name__ == "__main__":
+    asyncio.run(main())

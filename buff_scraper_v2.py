@@ -3,12 +3,12 @@ import asyncio
 import aiohttp
 import random
 import json
-import markets_scripts.tools.module as tl
+import tools.module as tl
 from datetime import datetime
 from pymongo import MongoClient, UpdateOne
 
 cfg = json.load(open("configs/config.json"))
-cookies = {'session': '1-DWa0coDi3DXz5lQ3yFb6CDtImZE9fw3BA2v2shvvG3Rm2030480540'}
+cookies = {'session': '1-fkPwCDN8lJpo644DYZG-nCxW7lejfc3ipoULLhR1TIgJ2030480540'}
 pool = None
 cur_rate = 0
 

@@ -9,7 +9,6 @@ from pymongo import MongoClient, UpdateOne
 
 cfg = json.load(open("configs/config.json"))
 cookies = {'session': '1-fkPwCDN8lJpo644DYZG-nCxW7lejfc3ipoULLhR1TIgJ2030480540'}
-pool = None
 cur_rate = 0
 
 mongo_client = MongoClient(cfg["mongoDB"]["uri"])
@@ -78,9 +77,8 @@ async def scrape():
             await asyncio.sleep(random.randrange(14, 28))
      
 
+
 async def main():
-    global pool
-    pool = await tl.set_db_conn()
     while True:
         try:
           await asyncio.gather(scrape(), convert_currency())

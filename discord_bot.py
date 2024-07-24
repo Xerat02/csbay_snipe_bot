@@ -43,6 +43,7 @@ async def find_existing_message(channel, target_title):
 async def send_statistics_embed():
     while not bot.is_closed():
         try:
+            now = datetime.now()
             all_guild_channels = db["snipe_discord_channels"].find()
 
             for guild_channels in all_guild_channels:
@@ -64,12 +65,44 @@ async def send_statistics_embed():
                 time_frame_data = db["snipe_statistic_time_frame"].find()
                 hour_data = db["snipe_statistic_hour_data"].find()
                 common_snipes_data = db["snipe_statistic_item_snipes"].find().sort("count", -1).limit(7)
+                all_markets_stats = db["snipe_statistic"].find_one({"_id": "All markets"})
 
-                if data and time_frame_data and hour_data and common_snipes_data:
+                if data and time_frame_data and hour_data and common_snipes_data and all_markets_stats:
                     # Embed 1: Market Statistics
-                    embed1 = discord.Embed(title="Market Statistics", description="Here are the latest stats:", color=discord.Color.blue())
+                    embed1 = discord.Embed(title="Market Statistics", color=discord.Color.blue())
+
+                    embed1.add_field(name=f"{all_markets_stats.get('_id')}", value=f"📚 Recorded snipes: {all_markets_stats.get('count')} (*+{all_markets_stats.get('count') - all_markets_stats.get('last_hour_count')} last hour*)\n🔖 Average Discount: {all_markets_stats.get('average')}%\n💵 Max recorded profit: ${all_markets_stats.get('max_profit')} ([Jump]({all_markets_stats.get('message_url')}))", inline=False)
                     for row in data:
                         embed1.add_field(name=f"{row.get('_id')}", value=f"📚 Recorded snipes: {row.get('count')} (*+{row.get('count') - row.get('last_hour_count')} last hour*)\n🔖 Average Discount: {row.get('average')}%\n💵 Max recorded profit: ${row.get('max_profit')} ([Jump]({row.get('message_url')}))", inline=False)
+
+                    def remove_trailing_zeros(x):
+                        if "." in x:
+                            if x.endswith("0") or x.endswith("."):
+                                return(remove_trailing_zeros(x[:-1]))
+                        else:
+                            return(x)
+                       
+                    
+                    for row in time_frame_data:
+                        time_frame = int(row.get("_id")) 
+                        x = 0   
+                        if time_frame < 60:
+                            x = time_frame
+                            time_frame = remove_trailing_zeros(str(x)) + " min"
+                        elif time_frame / 60 < 24:
+                            x = time_frame / 60
+                            time_frame = remove_trailing_zeros(str(x)) + " h" 
+                        elif time_frame / 1440 < 7:
+                            x = time_frame / 1440
+                            time_frame = remove_trailing_zeros(str(x)) + " d"
+                        elif time_frame / 10080 < 5:
+                            x = time_frame / 10080
+                            time_frame = remove_trailing_zeros(str(x)) + " w"     
+
+                        embed1.add_field(name=f"The best snipe in {time_frame}:", value=f"Market: {row.get('market')}\nPotencial profit: ${row.get('potencial_profit')} ([Jump]({row.get('message_url')}))\nDiscount: {row.get('discount')}%", inline=False)
+
+                    embed1.add_field(name="", value=f"Last updated: <t:{int(now.timestamp())}:R>")
+
 
                     # Embed 2: Hourly Activity Levels
                     embed2 = discord.Embed(title="Hourly Activity Levels", description="Activity level = ⭐\n Profitability Level = 💰", color=discord.Color.red())
@@ -79,18 +112,17 @@ async def send_statistics_embed():
                         hour = f"{row.get('_id'):02d}:00"
                         value = f"{activity_indicator}\n{profit_indicator}"
 
-                        now = datetime.now()    
                         if now.hour == row.get("_id"):
                             embed2.add_field(name=f"> __<t:{int(now.timestamp())}:t>__", value=value, inline=False)
                         else:
-                            embed2.add_field(name=f"> <t:{(int(now.timestamp()) + ((int(row.get('_id')) - 1) * 3600) - (now.minute*60))}:t>", value=value, inline=False)
-                    embed2.set_footer(text=f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+                            embed2.add_field(name=f"> <t:{((int(now.timestamp()) - (now.hour * 3600) - (now.minute*60))) + (int(row.get('_id')) * 3600)}:t>", value=value, inline=False)
+                    embed2.add_field(name="", value=f"Last updated: <t:{int(now.timestamp())}:R>")
 
                     # Embed 3: Most Common Snipes
                     embed3 = discord.Embed(title="Most Common Snipes", description="", color=discord.Color.green())
                     for row in common_snipes_data:
                         embed3.add_field(name=f"{row.get('_id')}", value=f"📚 Recorded snipes: {row.get('count')}\n🔖 Average Discount: {round(row.get('average_discount'), 2)}%", inline=False)
-                    embed3.set_footer(text=f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+                    embed3.add_field(name="", value=f"Last updated: <t:{int(now.timestamp())}:R>")
 
                     if stats_message1 and stats_message2 and stats_message3:
                         await stats_message1.edit(embed=embed1)
@@ -126,7 +158,6 @@ async def create_embed(data):
 
         embed = discord.Embed(title=header, description=desc, url=data["_id"])
         embed.set_thumbnail(url=data["buff_item_image"])
-        embed.timestamp = datetime.utcnow()
         footer_text = data["market_name"]
         embed.set_footer(text=footer_text, icon_url=cfg["main"]["icons_urls"].get(data["market_name"], ""))
         return embed

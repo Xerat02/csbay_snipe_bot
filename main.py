@@ -343,19 +343,22 @@ async def update_total_statistics(profit):
             hour_count = 0
             average = 0
             total_profit = 0
+            last_hour_count = 0
 
             for value in market_data:
                 count = count + value.get("count", 0)
                 hour_count = hour_count + (value.get("count") - value.get("last_hour_count"))
                 average = average + value.get("average", 0)
                 total_profit = total_profit + value.get("total_profit", 0)
-            average = average / len(market_data)
+                last_hour_count = last_hour_count + value.get("last_hour_count", 0)
+            average = round(average / len(market_data), 2)
 
             collection.update_one(
                 {"_id": "All markets"},
                 {
                     "$set": {
                                 "count": count,
+                                "last_hour_count": last_hour_count,
                                 "average": average,
                                 "max_profit": market_data[0].get("max_profit"),
                                 "total_profit": total_profit,
@@ -471,5 +474,4 @@ async def main():
 
 
 #run main function
-if __name__ == "__main__":
-    asyncio.run(main())
+asyncio.run(main())

@@ -36,6 +36,9 @@ async def find_existing_message(channel, target_title):
         return None
     except Exception as e:
         print(e)
+    finally:
+        await asyncio.sleep(1)
+
 
 
 
@@ -144,11 +147,11 @@ async def create_embed(data):
     header = data["item_name"]
     risk = data["market_risk_factor"]
     try:
-        if risk < cfg["main"]["risk_ranges"][0]:
+        if risk == 0:
             risk = "Low"
-        elif risk < cfg["main"]["risk_ranges"][0]:
+        elif risk == 1:
             risk = "Medium"
-        elif risk < cfg["main"]["risk_ranges"][0]:
+        elif risk == 2:
             risk = "High"
         else:
             risk = "Very High"
@@ -218,7 +221,7 @@ async def send_message(data):
                     if channels[2]:
                         message = await channels[2].send(embed=embed, view=view)
 
-                if price > cfg["main"]["price_ranges"][2] and item["market_risk_factor"] < 7 and item["buff_discount"] >= 10 or item["profit"][1] > 5:
+                if price > cfg["main"]["price_ranges"][2] and item["market_risk_factor"] < 3 and item["buff_discount"] >= 10 or item["profit"][1] > 5:
                     embed.colour = discord.Colour(cfg["main"]["message_colors"][3])
                     if len(channels) > 3 and channels[3]:
                         message = await channels[3].send(embed=embed, view=view)
@@ -335,9 +338,9 @@ async def removechannel(interaction: discord.Interaction, choices: app_commands.
                 {"$unset": {channel_field: ""}},
                 upsert=True
             )
-            await interaction.response.send_message(f"Channel {channel_field} has been removed from this server.")
+            await interaction.response.send_message(f"{channel_field} has been removed from this server.")
         else:
-            await interaction.response.send_message(f"No existing channel found for {channel_field}.")
+            await interaction.response.send_message(f"You can't remove this channel, because its not presented in our database!.")
     else:
         await interaction.response.send_message("Invalid choice.")
 

@@ -44,7 +44,7 @@ async def process_data(market_array):
             market_row = market_row.split(";")
             
             if len(market_row) > 1:
-                market_risk_factor = ""
+                market_risk_factor = 0
                 market_skin_name = str(market_row[0])
                 market_price = float(market_row[1])
                 market_item_link = market_row[2].replace(" ", "%20")
@@ -69,16 +69,20 @@ async def process_data(market_array):
 
                     if buff_buy_price <= 0 or buff_sell_price <= 0 or market_price <= 0:
                         continue
-                    else:
-                        buff_price = buff_sell_price if buff_sell_price != 0 else buff_buy_price
+                
+                    buff_price = buff_sell_price if buff_sell_price != 0 else buff_buy_price
+                    if buff_sell_price != 0 and buff_buy_price != 0:
+                        price_diff = abs(buff_sell_price - buff_buy_price) / min(buff_sell_price, buff_buy_price)
+                        if price_diff > 0.10:
+                            buff_price = min(buff_sell_price, buff_buy_price)
 
-                        if buff_sell_price != 0 and buff_buy_price != 0:
-                            price_diff = abs(buff_sell_price - buff_buy_price) / min(buff_sell_price, buff_buy_price)
-
-                            if price_diff > 0.10:
-                                buff_price = min(buff_sell_price, buff_buy_price)
-
-                        market_risk_factor = abs((((buff_sell_price - buff_price) / buff_price) * 100))
+                    #risk factor calculate
+                    if buff_item_sell_num < 50:
+                        market_risk_factor = market_risk_factor + 1
+                    if buff_item_buy_num < 30:
+                        market_risk_factor = market_risk_factor + 1    
+                    if (100 / (buff_buy_price + buff_buy_price)) * abs(buff_buy_price - buff_price) > 7:
+                        market_risk_factor = market_risk_factor + 1
 
                     market_price = round(market_price, 2)
                     if market_price < buff_price and buff_price > 0.5:

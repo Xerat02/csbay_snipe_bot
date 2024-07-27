@@ -34,7 +34,9 @@
       "skinbid.txt",
       "gamerpay.txt",
       "csmoney.txt",
-      "tradeit.txt"
+      "tradeit.txt",
+      "buffmarket.txt",
+      "shadowpay.txt"
     ],
     "icons_urls": {
       "Skinport": "https://i.imgur.com/NH7KSXK.png",
@@ -51,7 +53,9 @@
       "SkinBid": "https://i.imgur.com/9vJbSuD.jpg",
       "Gamerpay": "https://i.imgur.com/5YUg4dM.png",
       "CSMoney": "https://i.imgur.com/E1Z8b2B.png",
-      "TradeIt": "https://i.imgur.com/ZgkQzfy.jpg"
+      "TradeIt": "https://i.imgur.com/ZgkQzfy.jpg",
+      "BUFFMarket": "https://i.imgur.com/rsAK6qU.jpg",
+      "Shadowpay": "https://i.imgur.com/uRN6tY7.png"
     },
     "stat_channels_id": [1144777265574576198],
     "snipe_channels_id": [

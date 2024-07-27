@@ -110,8 +110,8 @@ async def send_statistics_embed():
                     # Embed 2: Hourly Activity Levels
                     embed2 = discord.Embed(title="Hourly Activity Levels", description="Activity level = ⭐\n Profitability Level = 💰", color=discord.Color.red())
                     for row in hour_data:
-                        activity_indicator = "⭐" * int(round(row.get("busyness_percentage", 0) / 2))
-                        profit_indicator = "💰" * int(round(row.get("profit_percentage", 0) / 2))
+                        activity_indicator = "⭐" * int(round(row.get("busyness_percentage", 0)))
+                        profit_indicator = "💰" * int(round(row.get("profit_percentage", 0)))
                         hour = f"{row.get('_id'):02d}:00"
                         value = f"{activity_indicator}\n{profit_indicator}"
 
@@ -159,7 +159,7 @@ async def create_embed(data):
 
         desc = f"**Risk:** `{risk}`\n**Market price:** ${data['market_price']}\n**Buff price:** ${data['buff_price']}\n**Potencial profit:** ${data['profit'][0]} / ${data['profit'][1]} (With buff fees) \n**Discount:** {data['buff_discount']}% ({round(100-data['buff_discount'], 2)}% Buff) \n\nBuff data was last updated <t:{int(data['buff_data_update_time'].timestamp())}:R>"
 
-        embed = discord.Embed(title=header, description=desc, url=data["_id"])
+        embed = discord.Embed(title=header, description=desc, url=data["market_link"])
         embed.set_thumbnail(url=data["buff_item_image"])
         footer_text = data["market_name"]
         embed.set_footer(text=footer_text, icon_url=cfg["main"]["icons_urls"].get(data["market_name"], ""))
@@ -200,7 +200,7 @@ async def send_message(data):
             for item in data:
                 embed = await create_embed(item)
 
-                market_button = discord.ui.Button(label="Check it", style=discord.ButtonStyle.url, url=item["_id"])
+                market_button = discord.ui.Button(label="Check it", style=discord.ButtonStyle.url, url=item["market_link"])
                 buff_button = discord.ui.Button(label="Buff price", style=discord.ButtonStyle.url, url=item["buff_item_link"])
                 view = discord.ui.View()
                 view.add_item(market_button)
@@ -221,7 +221,7 @@ async def send_message(data):
                     if channels[2]:
                         message = await channels[2].send(embed=embed, view=view)
 
-                if price > cfg["main"]["price_ranges"][2] and item["market_risk_factor"] < 3 and item["buff_discount"] >= 10 or item["profit"][1] > 5:
+                if price > cfg["main"]["price_ranges"][2] and item["market_risk_factor"] < 2 and item["buff_discount"] >= 10 or item["profit"][1] > 5:
                     embed.colour = discord.Colour(cfg["main"]["message_colors"][3])
                     if len(channels) > 3 and channels[3]:
                         message = await channels[3].send(embed=embed, view=view)

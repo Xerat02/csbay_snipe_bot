@@ -92,9 +92,10 @@ async def process_data(market_array):
                         #if item is good item will be saved into the database   
                         if buff_discount > 4 or profit[0] > 2:
                             item_data = {
-                                "_id": market_item_link,  
+                                "_id": market_item_link + str(market_price),  
                                 "item_name": buff_skin_name,
                                 "market_name": market_name,
+                                "market_link": market_item_link,
                                 "buff_price": buff_price,
                                 "market_price": market_price,
                                 "buff_discount": buff_discount,
@@ -112,7 +113,7 @@ async def process_data(market_array):
                             try:
                                 db["snipe_processed_items"].insert_one(item_data)
                             except DuplicateKeyError:
-                                pass 
+                                print("duplicate") 
                 #else:
                 #    print("Not found!")
                 #    print("-------------")

@@ -29,7 +29,7 @@ async def scrape():
         url = f"https://buff.163.com/api/market/goods/all?game=csgo&page_size=80&page_num={x}"
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10, cookies=cookies) as response:
+                async with session.get(url, timeout=20, cookies=cookies) as response:
                     items = await response.json()
                     code = str(items['code']).lower()
                     if response.status == 200 and code == "ok":

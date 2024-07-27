@@ -13,23 +13,40 @@ cur_rate = 0
 
 async def start():
     async with websockets.connect('wss://ws.shadowpay.com/connection/websocket?token=fcc02e347f409e8f9a3314c358009108') as websocket:
-        auth_message = json.dumps({"params": {"token": "fcc02e347f409e8f9a3314c358009108"}, "id": 1})
+        auth_message = json.dumps({
+            "params": {"token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI3NjU2MTE5ODI1MDQzMTg0MiIsImNoYW5uZWxzIjpbIm9mZmVycyM3NjU2MTE5ODI1MDQzMTg0MiIsIm9mZmVycyJdfQ.Zg40ca0R_kSmizJ0-nW62F062ldxcBBNGpf0K_7we88"},
+            "id": 1
+        })
         await websocket.send(auth_message)
+        
         while True:
             try:
                 response = await websocket.recv()
-                #if response != "pong":
-                #    parsed_data = json.loads(response)
-                #    inner_data = json.loads(parsed_data['data'])
-#
-                #    name = str(inner_data['i_market_hash_name'])
-                #    price = str(round(((float(inner_data["ui_price"]))*cur_rate),3))
-                #    market_hash_name = str(inner_data["i_market_hash_name"]).replace(" ","%20")
-                #    link = "https://market.csgo.com/en/Agent/"+market_hash_name+"?id="+inner_data['ui_id']
-                #    items.append(f"{name};{price};{link};Marketcsgo")
+                
+                responses = response.split('\n')
+                for resp in responses:
+                    if resp.strip():
+                        try:
+                            parsed_data = json.loads(resp)
+
+                            if ("result" in parsed_data and
+                                "data" in parsed_data["result"] and
+                                "data" in parsed_data["result"]["data"] and
+                                "offers" in parsed_data["result"]["data"]["data"]):
+
+                                offers = parsed_data["result"]["data"]["data"]["offers"]
+                                for obj in offers:
+                                    name = str(obj["steam_market_hash_name"])
+                                    price = str(float(obj["price"]) * 1.05157)
+                                    link = f"https://shadowpay.com/item/{obj['id']}"
+                                    items.append(f"{name};{price};{link};Shadowpay")
+                        except json.JSONDecodeError as e:
+                            logging.error(f"JSON decode error: {e}")
             except websockets.exceptions.ConnectionClosed as e:
-                print("Connection with server closed", e)
+                tl.exceptions(e)
                 break
+            except Exception as e:
+                logging.error(f"An error occurred: {e}")
 
 
 
@@ -38,7 +55,7 @@ async def write_to_file():
         try:
             if items:
                 data_to_write = "\n".join(items)
-                with open("textFiles/marketcsgo.txt", "w", encoding="utf-8") as file:
+                with open("textFiles/shadowpay.txt", "w", encoding="utf-8") as file:
                     file.write(data_to_write + "\n")
                 items.clear()
                 logging.debug("Data successfully written to the file.")
@@ -51,8 +68,9 @@ async def write_to_file():
 async def main():
     while True:
         try:
-            await asyncio.gather(start())
+            await asyncio.gather(start(), write_to_file())
         except Exception as e:
             logging.error("Error occurred during starting script: %s", e)
+
 
 asyncio.run(main())

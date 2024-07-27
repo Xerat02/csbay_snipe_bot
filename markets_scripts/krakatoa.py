@@ -1,7 +1,3 @@
-headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-  
-
-
 import asyncio
 import aiohttp
 import logging
@@ -19,14 +15,14 @@ async def getdata():
     try:
         new_skins = set()
         async with aiohttp.ClientSession() as session:
-            async with session.get("https://mannco.store/items/get?quality=&class=&killstreak=&wear=&search=&price=DESC&deals=&page=0&i=22023&game=730&effect=&warpaints=&type=&parts=&spell=&festivized=&age=DESC&sold=&range=&stock=&skip=0", headers=headers, timeout=30) as response:
+            async with session.get("https://loot.farm/botsInventory_730.json", timeout=10) as response:
                 if response.status == 200:
                     data = await response.json()
-                    for obj in data:
-                        name = str(obj["name"])
-                        price = str(float(obj["price"])/100)
-                        link = "https://mannco.store/item/"+str(obj["url"])
-                        new_skins.add((name, price, link, "Mannco"))
+                    for obj in data["result"]:
+                        name = str(obj["n"])
+                        price = str(float(obj["price"]["USD"])/100)
+                        link = "https://dmarket.com/ingame-items/item-list/csgo-skins?ref=y9l2rUxEFC&userOfferId="+obj["extra"]["linkId"]
+                        new_skins.add((name, price, link, "Dmarket"))
 
         updated_skins = new_skins - previous_skins
         previous_skins = new_skins
@@ -34,7 +30,7 @@ async def getdata():
         if not updated_skins:
             return
         else:
-            with open("textFiles/mannco.txt", "w", encoding="utf-8") as f:
+            with open("textFiles/krakatoa.txt", "w", encoding="utf-8") as f:
                 for skin in updated_skins:
                     f.write(skin[0] + ";" + skin[1] + ";" + skin[2]+ ";" + skin[3] + "\n")
                     await asyncio.sleep(0.06)
@@ -50,7 +46,7 @@ async def main():
         except Exception as e:
             print(e)
         finally:
-            await asyncio.sleep(10)
+            await asyncio.sleep(30)
 
 
 

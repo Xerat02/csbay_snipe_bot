@@ -2,9 +2,13 @@ import socketio
 import asyncio
 import logging
 
+
+
 logging.basicConfig(level=logging.DEBUG, format='[%(asctime)s] [%(levelname)s] %(message)s')
 items = []
 sio = socketio.AsyncClient(ssl_verify=True)
+
+
 
 @sio.on('add_item')
 async def on_add_item(data):
@@ -14,11 +18,13 @@ async def on_add_item(data):
         price = str(round((float(data['price'])/1000),2))
         if "★" in name:
             link_name = link_name[1:]
-        link = "https://waxpeer.com/r/csbay/"+link_name+"/item/"+str(data['item_id'])
+        link = "https://waxpeer.com/"+link_name+"/item/"+str(data['item_id'])
         items.append(f"{name};{price};{link};Waxpeer")
     except Exception as e:
         logging.error("Error occurred during getting data: %s", e)
         await sio.disconnect()
+
+
 
 async def write_to_file():
     while True:
@@ -33,11 +39,15 @@ async def write_to_file():
         except Exception as e:
             logging.error("Error occurred during writing data: %s", e)
 
+
+
 async def ping_server():
     while True:
         if sio.connected:
             await sio.emit('name','ping')
         await asyncio.sleep(20)
+
+
 
 async def start(sub):
     try:
@@ -60,5 +70,10 @@ async def main(sub_events):
         except Exception as e:
             logging.error("Error occurred during starting script: %s", e)
 
+
+
 sub_events = ["add_item"]
+
+
+
 asyncio.run(main(sub_events))

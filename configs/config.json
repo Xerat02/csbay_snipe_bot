@@ -1,23 +1,14 @@
 {
-  "database": {
-    "host": "192.168.88.16",
-    "port": 3306,
-    "user": "user",
-    "password": "Buldozer4563",
-    "db": "csbay",
-    "minsize": 3,
-    "maxsize": 60
-  },
   "mongoDB": {
     "uri": "mongodb://192.168.88.16:27017/"
   },
   "main": {
     "discord_client_token": "MTEwNDg3MTkxNjk0MDA1MDU0Mg.GM75CV.6WPwQaiAQTUxeVAXpWIsRgikVQHFIJ8UJ7CdSQ",
     "currency_updater_token": "1d437a3b6e16fa0e3043159f07090b2e",
+    "currency_updater_delay": 1000,
     "message_send_delay": 0.03,
     "offers_check_delay": 0.005,
-    "statistic_message_update_delay": 5,
-    "currency_updater_delay": 4000,
+    "statistic_message_update_delay": 120,
     "temp_files_location": "tempFiles",
     "risk_ranges": [3.5, 7, 11.5],
     "files": [
@@ -30,11 +21,18 @@
       "mannco.txt",
       "marketcsgo.txt",
       "whitemarket.txt",
-      "cs2go.txt",
       "skinbid.txt",
       "gamerpay.txt",
       "csmoney.txt",
-      "tradeit.txt"
+      "tradeit.txt",
+      "buffmarket.txt",
+      "shadowpay.txt",
+      "lis_skins.txt",
+      "skinthunder.txt",
+      "lootfarm.txt",
+      "cstrade.txt",
+      "youpin.txt",
+      "skinflow.txt"
     ],
     "icons_urls": {
       "Skinport": "https://i.imgur.com/NH7KSXK.png",
@@ -47,18 +45,21 @@
       "Waxpeer": "https://i.imgur.com/WWSVI1C.png",
       "Marketcsgo": "https://i.imgur.com/HFbrqsZ.png",
       "WhiteMarket": "https://i.imgur.com/cIUZKLL.jpg",
-      "CS2GO": "https://i.imgur.com/gjWau5K.jpg",
       "SkinBid": "https://i.imgur.com/9vJbSuD.jpg",
       "Gamerpay": "https://i.imgur.com/5YUg4dM.png",
       "CSMoney": "https://i.imgur.com/E1Z8b2B.png",
-      "TradeIt": "https://i.imgur.com/ZgkQzfy.jpg"
+      "TradeIt": "https://i.imgur.com/ZgkQzfy.jpg",
+      "BUFFMarket": "https://i.imgur.com/rsAK6qU.jpg",
+      "Shadowpay": "https://i.imgur.com/uRN6tY7.png",
+      "Lis-skins": "https://i.imgur.com/5cvamPK.png",
+      "Skinthunder": "https://i.imgur.com/XPkiGZC.jpg",
+      "Lootfarm": "https://i.imgur.com/1Ahz0it.png",
+      "CSTrade": "https://i.imgur.com/XX9O0H6.jpg",
+      "Youpin": "https://i.imgur.com/G1mafUe.png",
+      "Skinflow": "https://i.imgur.com/zHgkXMT.png"
     },
-    "stat_channels_id": [1144777265574576198],
-    "snipe_channels_id": [
-      1104867182871056455, 1104867279512023190, 1104867324730818570,
-      1142518314141233216
-    ],
-    "message_colors": [248200, 5472231, 15269988, 13671674],
+    "message_colors": [4942285, 8931327, 13839590, 15420235],
+    "info_message_color": 16777215,
     "price_ranges": [10, 100, 2],
     "stats_time_frames": [1, 10, 60, 1440, 10080]
   }

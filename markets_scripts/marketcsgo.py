@@ -4,13 +4,18 @@ import websockets
 import logging
 import tools.module as tl
 
+
+
 items = []
 cur_rate = 0
+
+
 
 async def convert_currency():
     global cur_rate
     cur_rate = await tl.get_dollar("RUB", 1)
     await asyncio.sleep(200)    
+
 
 
 async def ping_server(websocket):
@@ -21,6 +26,8 @@ async def ping_server(websocket):
             break
         finally:
             await asyncio.sleep(20)
+
+
 
 async def start():
     async with websockets.connect('wss://wsn.dota2.net/wsn/') as websocket:
@@ -41,6 +48,8 @@ async def start():
             except websockets.exceptions.ConnectionClosed:
                 print("Connection with server closed")
                 break
+
+
 
 async def write_to_file():
     while True:

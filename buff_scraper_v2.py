@@ -3,13 +3,13 @@ import asyncio
 import aiohttp
 import random
 import json
+import re
 import tools.module as tl
 from datetime import datetime
 from pymongo import MongoClient, UpdateOne
 
 cfg = json.load(open("configs/config.json"))
-cookies = {'session': '1-DWa0coDi3DXz5lQ3yFb6CDtImZE9fw3BA2v2shvvG3Rm2030480540'}
-pool = None
+cookies = {'session': '1-fkPwCDN8lJpo644DYZG-nCxW7lejfc3ipoULLhR1TIgJ2030480540'}
 cur_rate = 0
 
 mongo_client = MongoClient(cfg["mongoDB"]["uri"])
@@ -26,11 +26,11 @@ async def convert_currency():
 
 
 async def scrape():
-    for x in range(300, 0, -1):
+    for x in range(300):
         url = f"https://buff.163.com/api/market/goods/all?game=csgo&page_size=80&page_num={x}"
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10, cookies=cookies) as response:
+                async with session.get(url, timeout=20, cookies=cookies) as response:
                     items = await response.json()
                     code = str(items['code']).lower()
                     if response.status == 200 and code == "ok":
@@ -45,7 +45,9 @@ async def scrape():
                             buy_num = int(item["buy_num"])
                             sell_num = int(item["sell_num"])
                             item_image = str(item["goods_info"]["icon_url"])
+                            page_number = x
                             update_time = datetime.now()
+                            search_name = tl.preprocess_string(market_hash_name)
 
                             operations.append(
                                 UpdateOne(
@@ -53,12 +55,13 @@ async def scrape():
                                     {
                                         '$set': {
                                             'market_hash_name': market_hash_name,
-                                            'search_name': market_hash_name.replace(" ", "").replace("\t", "").replace("\n", "").replace("\r", "").lower(),
+                                            'search_name': search_name,
                                             'price_in_usd': price_in_usd,
                                             'buy_max_price': buy_max_price,
                                             'buy_num': buy_num,
                                             'sell_num': sell_num,
                                             'item_image': item_image,
+                                            'page_number': page_number,
                                             'update_time': update_time
                                         }
                                     },
@@ -78,9 +81,8 @@ async def scrape():
             await asyncio.sleep(random.randrange(14, 28))
      
 
+
 async def main():
-    global pool
-    pool = await tl.set_db_conn()
     while True:
         try:
           await asyncio.gather(scrape(), convert_currency())

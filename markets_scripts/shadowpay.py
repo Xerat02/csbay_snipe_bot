@@ -37,8 +37,8 @@ async def start():
                                 offers = parsed_data["result"]["data"]["data"]["offers"]
                                 for obj in offers:
                                     name = str(obj["steam_market_hash_name"])
-                                    price = str(float(obj["price"]) * 1.05157)
-                                    link = f"https://shadowpay.com/item/{obj['id']}"
+                                    price = str(float(obj["price"]))
+                                    link = f"https://shadowpay.com/item/{obj['id']}?utm_campaign=f3YuZpNRuWRk8Gx"
                                     items.append(f"{name};{price};{link};Shadowpay")
                         except json.JSONDecodeError as e:
                             logging.error(f"JSON decode error: {e}")
@@ -71,6 +71,7 @@ async def main():
             await asyncio.gather(start(), write_to_file())
         except Exception as e:
             logging.error("Error occurred during starting script: %s", e)
+
 
 
 asyncio.run(main())

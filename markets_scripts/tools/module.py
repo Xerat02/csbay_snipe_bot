@@ -1,10 +1,17 @@
-import aiomysql
 import asyncio
+import aiohttp
 import time
 import logging
 import os
 import sys
 import json
+import random
+import re
+import unicodedata
+from aiohttp import ClientError, ClientResponseError, ServerTimeoutError, ClientPayloadError
+from selenium import webdriver
+from selenium_stealth import stealth
+from bs4 import BeautifulSoup
 from pymongo import MongoClient, UpdateOne
 
 
@@ -67,87 +74,84 @@ cfg = cfg_load("config")
 
 
 #######################################
-# Database releated functions
+# Request
 #######################################
 
+## List of proxies
+#proxies = [
+#    "192.53.66.122:6228:hhocrsgo:g84uej4uz8ug",
+#    "192.145.71.191:6828:hhocrsgo:g84uej4uz8ug",
+#    "204.93.147.10:6564:hhocrsgo:g84uej4uz8ug",
+#]
+#
+#current_proxy_index = 0
+#
+#def get_next_proxy():
+#    global current_proxy_index
+#    proxy = proxies[current_proxy_index]
+#    ip_port, username, password = proxy.rsplit(":", 2)
+#    current_proxy_index = (current_proxy_index + 1) % len(proxies)
+#    return {
+#        "http": f"http://{username}:{password}@{ip_port}",
+#        "https": f"https://{username}:{password}@{ip_port}",
+#        "raw": f"{ip_port}" 
+#    }
 
 
-#database connection function
-async def set_db_conn():
+
+async def fetch(url, headers=None, cookies=None, json_format=None, mode=1, response_format="json", proxy=True, method="get", params=None):
+    retries = 3  # Increase retries for better fault tolerance
+    headers = headers or {}
+    proxy_url = "http://hhocrsgo-rotate:g84uej4uz8ug@p.webshare.io:80/" if proxy else None
+
+    for attempt in range(retries):
+        try:
+            headers.update(random.choice(cfg_load("headers")["result"]))
+            async with aiohttp.ClientSession() as session:
+                response = None
+                if method == "get":
+                    response = await session.get(url, proxy=proxy_url, headers=headers, timeout=15, cookies=cookies, json=json_format, params=params)
+                elif method == "post":
+                    response = await session.post(url, proxy=proxy_url, headers=headers, timeout=15, cookies=cookies, json=json_format, params=params)
+                
+                response.raise_for_status()
+                text = await response.text()
+                if response_format == "json":
+                    try:
+                        return await response.json()
+                    except ClientResponseError as e:
+                        print(f"Error decoding JSON: {e}")
+                        return extract_json_from_html(text)
+                elif response_format == "html":
+                    return text
+
+        except (ClientResponseError, ServerTimeoutError, ClientPayloadError) as e:
+            print(f"Attempt {attempt + 1} failed with a client/server error: {e}")
+        except ClientError as e:
+            print(f"Attempt {attempt + 1} encountered a client error: {e}")
+        except asyncio.TimeoutError as e:
+            print(f"Attempt {attempt + 1} timed out: {e}")
+        except Exception as e:
+            print(f"Attempt {attempt + 1} encountered an unexpected error: {e}")
+
+        await asyncio.sleep(5)
+
+    return None
+
+def extract_json_from_html(html):
+    """
+    Extract JSON data from HTML content using regex
+    """
     try:
-        conn = await aiomysql.create_pool(
-            host = cfg["database"]["host"],
-            port = cfg["database"]["port"],
-            user = cfg["database"]["user"],
-            password = cfg["database"]["password"],
-            db = cfg["database"]["db"],
-            minsize = cfg["database"]["minsize"],
-            maxsize = cfg["database"]["maxsize"]
-        )
-        return conn
-    except Exception as e:
-        exceptions(e)
-        return None
-
-
-
-#function that start database connection
-async def get_db_conn(pool):
-    try:
-        conn = await pool.acquire()
-        return conn
-    except Exception as e:
-        exceptions(e)
-        return None
-    
-
-
-#fuction that release current database connection
-async def release_db_conn(cursor, db_conn, pool):
-    try:
-        if cursor:
-            await cursor.close()
-        if db_conn:
-            await pool.release(db_conn)
-    except Exception as e:
-        exceptions(e)        
-
-
-
-#function that will terminate database connection
-async def close_db_conn(pool):
-    try:
-        pool.close()
-        await pool.wait_closed()        
-    except Exception as e:
-        exceptions(e)        
-
-
-#function that will return you data from the database
-async def db_get_data(sql, cursor, mode=None, *args, **kwargs):
-    try:
-        all_args = args + tuple(kwargs.values())
-        await cursor.execute(sql, all_args)
-        if mode == 1:
-            data = await cursor.fetchone()
+        json_str = re.search(r'{.*}', html, re.DOTALL)
+        if json_str:
+            return json.loads(json_str.group(0))
         else:
-            data = await cursor.fetchall()
-        return data
+            print("No JSON found in HTML.")
+            return None
     except Exception as e:
-        exceptions(e)
-
-
-#function that will manipulate with the database data
-async def db_manipulate_data(sql, cursor, db_conn, commit, *args, **kwargs):
-    try:
-        all_args = args + tuple(kwargs.values())
-        await cursor.execute(sql, all_args)
-        if commit:
-            await db_conn.commit()
-    except Exception as e:
-        exceptions(e)
-        
-
+        print(f"Error extracting JSON from HTML: {e}")
+        return None
 
 
 #######################################
@@ -171,3 +175,19 @@ async def get_dollar(from_curr, amount):
             return float(amount) / float(curr)
     except Exception as e:
         exceptions(e)    
+
+
+
+#######################################
+# String function
+#######################################
+
+
+
+def preprocess_string(input_string):
+    normalized_string = unicodedata.normalize("NFC", input_string)
+    ascii_string = normalized_string.encode('ascii', 'ignore').decode('ascii')
+    alphanumeric_string = re.sub(r'[^a-zA-Z0-9]', '', ascii_string)
+    final_string = alphanumeric_string.lower()
+    
+    return final_string

@@ -2,9 +2,12 @@ import socketio
 import asyncio
 import logging
 
+
+
 logging.basicConfig(level=logging.DEBUG, format='[%(asctime)s] [%(levelname)s] %(message)s')
 skins = []
 sio = socketio.AsyncClient(ssl_verify=True)
+
 
 
 @sio.on('saleFeed')
@@ -17,6 +20,8 @@ async def on_sale_feed(result):
     except Exception as e:
         logging.error("Error occurred during getting data: %s", e)
         await sio.disconnect()
+
+
 
 async def write_to_file():
     while True:
@@ -31,6 +36,8 @@ async def write_to_file():
         except Exception as e:
             logging.error("Error occurred during writing data: %s", e)
 
+
+
 async def start():
     try:
         await sio.connect('https://skinport.com', transports=['websocket'], wait_timeout=10)
@@ -40,11 +47,15 @@ async def start():
     except Exception as e:
         logging.error("Error occurred during starting websocket: %s", e)
 
+
+
 async def main():
     while True:
         try:
             await asyncio.gather(start(), write_to_file())
         except Exception as e:
             logging.error("Error occurred during starting script: %s", e)
-            
+
+
+       
 asyncio.run(main())

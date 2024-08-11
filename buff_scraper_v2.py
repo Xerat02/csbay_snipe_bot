@@ -3,6 +3,7 @@ import asyncio
 import aiohttp
 import random
 import json
+import re
 import tools.module as tl
 from datetime import datetime
 from pymongo import MongoClient, UpdateOne
@@ -25,7 +26,7 @@ async def convert_currency():
 
 
 async def scrape():
-    for x in range(300, 0, -1):
+    for x in range(300):
         url = f"https://buff.163.com/api/market/goods/all?game=csgo&page_size=80&page_num={x}"
         try:
             async with aiohttp.ClientSession() as session:
@@ -44,7 +45,9 @@ async def scrape():
                             buy_num = int(item["buy_num"])
                             sell_num = int(item["sell_num"])
                             item_image = str(item["goods_info"]["icon_url"])
+                            page_number = x
                             update_time = datetime.now()
+                            search_name = tl.preprocess_string(market_hash_name)
 
                             operations.append(
                                 UpdateOne(
@@ -52,12 +55,13 @@ async def scrape():
                                     {
                                         '$set': {
                                             'market_hash_name': market_hash_name,
-                                            'search_name': market_hash_name.replace(" ", "").replace("\t", "").replace("\n", "").replace("\r", "").lower(),
+                                            'search_name': search_name,
                                             'price_in_usd': price_in_usd,
                                             'buy_max_price': buy_max_price,
                                             'buy_num': buy_num,
                                             'sell_num': sell_num,
                                             'item_image': item_image,
+                                            'page_number': page_number,
                                             'update_time': update_time
                                         }
                                     },

@@ -16,9 +16,8 @@ skins = []
 
 
 async def connect():
-    uri = "wss://ws.bitskins.com"
     try:
-        async with websockets.connect(uri, logger=logging.getLogger('websockets')) as socket:
+        async with websockets.connect("wss://ws.bitskins.com") as socket:
             await socket.send(json.dumps(["WS_AUTH_APIKEY", apikey]))
             await socket.send(json.dumps(["WS_SUB", "listed"]))
 

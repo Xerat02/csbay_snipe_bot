@@ -12,15 +12,12 @@ import asyncio
 import shutil
 import os
 import re
+import unicodedata
 import tools.module as tl
 from datetime import datetime, timedelta
 from collections import deque
 from pymongo import MongoClient, UpdateOne
 from pymongo.errors import DuplicateKeyError
-
-
-#variable that stores latest snipes
-processed_messages = deque(maxlen=300)
 
 
 
@@ -35,7 +32,7 @@ db = mongo_client["csbay"]
 
 
 
-#main function that processing new offers and saving them into the database
+# Main function that processes new offers and saves them into the database
 async def process_data(market_array):
     try:
         collection = db["buff_items"]
@@ -49,14 +46,10 @@ async def process_data(market_array):
                 market_price = float(market_row[1])
                 market_item_link = market_row[2].replace(" ", "%20")
                 market_name = market_row[3]
-
-                if market_item_link in processed_messages:
-                    continue
                 
-                search_value = "".join(market_skin_name.split()).lower()
-                buff_row = collection.find_one({"search_name": search_value})
+                search_name = tl.preprocess_string(market_skin_name)
+                buff_row = collection.find_one({"search_name": search_name})
 
-                
                 if buff_row:
                     buff_id = buff_row["_id"]
                     buff_skin_name = str(buff_row["market_hash_name"]).strip()
@@ -76,23 +69,23 @@ async def process_data(market_array):
                         if price_diff > 0.10:
                             buff_price = min(buff_sell_price, buff_buy_price)
 
-                    #risk factor calculate
+                    # Calculate risk factor
                     if buff_item_sell_num < 50:
-                        market_risk_factor = market_risk_factor + 1
+                        market_risk_factor += 1
                     if buff_item_buy_num < 30:
-                        market_risk_factor = market_risk_factor + 1    
-                    if (100 / (buff_buy_price + buff_buy_price)) * abs(buff_buy_price - buff_price) > 7:
-                        market_risk_factor = market_risk_factor + 1
+                        market_risk_factor += 1    
+                    if (abs(((buff_buy_price / buff_sell_price) - 1) * 100)) > 7:
+                        market_risk_factor += 1
 
                     market_price = round(market_price, 2)
                     if market_price < buff_price and buff_price > 0.5:
                         buff_discount = round(((buff_price / market_price) - 1) * 100, 2)
-                        profit = [round(buff_price - market_price, 2),round((buff_price * 0.975) - market_price, 2)]
+                        profit = [round(buff_price - market_price, 2), round((buff_price * 0.975) - market_price, 2)]
 
-                        #if item is good item will be saved into the database   
-                        if buff_discount > 4 or profit[0] > 2:
+                        # Save good items to the database
+                        if buff_discount < 220 and ((buff_discount > 4 and profit[0] > 0.5) or profit[0] > 30):
                             item_data = {
-                                "_id": market_item_link + str(market_price),  
+                                "_id": market_item_link + str(market_price) + str(buff_discount),  
                                 "item_name": buff_skin_name,
                                 "market_name": market_name,
                                 "market_link": market_item_link,
@@ -107,56 +100,54 @@ async def process_data(market_array):
                                 "buff_data_update_time": buff_data_update_time,
                                 "inserted_time": datetime.now()
                             }
-                            print(item_data)
-                            await update_statistics(item_name=buff_skin_name, market_name=market_name, discount=buff_discount, profit=profit, message_url=market_item_link)
-                            processed_messages.append(market_item_link)
                             try:
                                 db["snipe_processed_items"].insert_one(item_data)
+                                print(item_data)
+                                await update_statistics(item_name=buff_skin_name, market_name=market_name, discount=buff_discount, profit=profit, message_url=market_item_link)
                             except DuplicateKeyError:
-                                print("duplicate") 
-                #else:
-                #    print("Not found!")
-                #    print("-------------")
-                #    print(buff_row)
-                #    print(market_skin_name)  
-                #    print(search_value)
-                #    print(market_name)  
-                #    print("-------------")              
+                                pass
+                else:
+                    if market_name == "":
+                        print("----------------------------")
+                        print(market_skin_name)
+                        print(market_name)
+                        print(search_name)
+                        print(len(search_name))
+                        print("----------------------------")             
     except Exception as e:
         tl.exceptions(e)
 
 
 
-#fuction that reads data from market script files and executing process_data function with that data
+# Function to read data from market script files and execute process_data function with that data
 async def process_file(filename):
     temp_folder = cfg["main"]["temp_files_location"]
     if not os.path.exists(temp_folder):
         os.makedirs(temp_folder)
     base_name = os.path.basename(filename)
-    temp_filename = os.path.join(temp_folder, "temp_"+base_name)
+    temp_filename = os.path.join(temp_folder, "temp_" + base_name)
     shutil.copy(filename, temp_filename)
     try:
         with open(temp_filename, "r", encoding="utf-8") as file:
             item_array = file.read().split("\n")
-            if len(item_array) > 0:
-                if item_array[0] != "":
-                    await process_data(item_array) #send array to process_data function        
+            if item_array and item_array[0]:
+                await process_data(item_array)
+                with open(filename, "w", encoding="utf-8") as file:
+                    pass            
     except Exception as e:
         tl.exceptions(e)  
     finally:               
-        with open(filename,"w") as file:
-            pass        
-        os.remove(temp_filename)                    
+        os.remove(temp_filename)
 
 
 
-#function that running process data function in the threads
+# Function to run process data function in threads
 async def latest_offers():
     try:
         while True:
-            tasks = [process_file("textFiles/"+filename) for filename in cfg["main"]["files"]]            
-            await asyncio.gather(*tasks)            
-            await asyncio.sleep(cfg["main"]["offers_check_delay"])            
+            tasks = [process_file(os.path.join("textFiles", filename)) for filename in cfg["main"]["files"]]
+            await asyncio.gather(*tasks)
+            await asyncio.sleep(cfg["main"]["offers_check_delay"])
     except Exception as e:
         tl.exceptions(e)
 
@@ -169,12 +160,13 @@ async def update_statistics(item_name, market_name, discount, profit, message_ur
     new_average = None  
     new_max_profit = None
     
+    await asyncio.sleep(2)
     try:
         data = collection.find_one({"_id": market_name})
 
         #general snipe data
         if data:
-            old_count = data.get("count", 1) 
+            old_count = data.get("count", 0) 
             old_average = data.get("average", 0)   
             old_potencial_profit = data.get("potencial_profit")
             old_total_profit = data.get("total_profit", 0)
@@ -210,19 +202,6 @@ async def update_statistics(item_name, market_name, discount, profit, message_ur
                 upsert=True
             )
 
-            last_hour_update_time = data.get("last_hour_update_time")
-
-            if abs(datetime.now() - last_hour_update_time) > timedelta(hours=1):
-                collection.update_one(
-                    {"_id": market_name},
-                    {
-                        "$set": {
-                                    "last_hour_count": data.get("count", 0),
-                                    "last_hour_update_time": datetime.now()
-                                }
-                    },
-                    upsert=True
-                )    
         else:
             new_count = 1
             new_average = float(discount)
@@ -338,7 +317,7 @@ async def update_statistics(item_name, market_name, discount, profit, message_ur
 #function that updating total markets statistics
 async def update_total_statistics(profit):
     collection = db["snipe_statistic_market_data"]
-    
+    await asyncio.sleep(2)
     try:
         market_data = list(collection.find().sort({"max_profit": -1}))
         if len(market_data) > 0:
@@ -374,56 +353,72 @@ async def update_total_statistics(profit):
                 upsert=True
             )
 
-            #hour time stats
-            collection = db["snipe_statistic_hour_data"]
-            hour_data = list(collection.find())
-
-            if len(hour_data) > 0 and count != 0:
-                curent_hour_data = collection.find_one({"_id": datetime.now().hour})
-                if curent_hour_data:
-                    curent_hour_data_new_count = curent_hour_data.get("count", 0) + 1
-                    curent_hour_data_new_total_profit = curent_hour_data.get("total_profit", 0) + profit
+            # Market last hour count            
+            for value in market_data:
+                last_hour_update_time = value.get("last_hour_update_time")
+                if abs(datetime.now() - last_hour_update_time) > timedelta(hours=1):
                     collection.update_one(
-                        {"_id": float(datetime.now().hour)},
+                        {"_id": value.get("_id")},
                         {
                             "$set": {
-                                        "count": curent_hour_data_new_count,
-                                        "total_profit": curent_hour_data_new_total_profit
+                                        "last_hour_count": value.get("count", 0),
+                                        "last_hour_update_time": datetime.now()
                                     }
                         },
                         upsert=True
-                    )
+                    )    
 
-                busyness_percentage = 0
-                profit_percentage = 0
-                for x in hour_data:
-                    busyness_percentage = busyness_percentage + x.get("count", 0)
-                    profit_percentage = profit_percentage + x.get("total_profit", 0)
-                busyness_percentage = 100 / busyness_percentage   
-                profit_percentage = 100 / profit_percentage   
+        # Hour time stats
+        collection = db["snipe_statistic_hour_data"]
+        hour_data = list(collection.find())
 
-                for x in hour_data:
-                    collection.update_one(
-                        {"_id": x.get("_id")},
-                        {
-                            "$set": {
-                                        "busyness_percentage": round((busyness_percentage * x.get("count")), 2),
-                                        "profit_percentage": round((profit_percentage * x.get("total_profit", 0)), 2)
-                                    }
-                        },
-                        upsert=True
-                    )        
-            else:
-                for x in range(0, 24, 1):
-                    collection.update_one(
-                        {"_id": x},
-                        {
-                            "$set": {
-                                        "count": 0,
-                                    }
-                        },
-                        upsert=True
-                    )
+        if len(hour_data) > 0 and count != 0:
+            curent_hour_data = collection.find_one({"_id": datetime.now().hour})
+            if curent_hour_data:
+                curent_hour_data_new_count = curent_hour_data.get("count", 0) + 1
+                curent_hour_data_new_total_profit = curent_hour_data.get("total_profit", 0) + profit
+                collection.update_one(
+                    {"_id": float(datetime.now().hour)},
+                    {
+                        "$set": {
+                                    "count": curent_hour_data_new_count,
+                                    "total_profit": curent_hour_data_new_total_profit
+                                }
+                    },
+                    upsert=True
+                )
+
+            busyness_percentage = 0
+            profit_percentage = 0
+
+            for x in hour_data:
+                busyness_percentage = busyness_percentage + x.get("count", 0)
+                profit_percentage = profit_percentage + x.get("total_profit", 0)
+            busyness_percentage = 100 / busyness_percentage   
+            profit_percentage = 100 / profit_percentage   
+            for x in hour_data:
+                collection.update_one(
+                    {"_id": x.get("_id")},
+                    {
+                        "$set": {
+                                    "busyness_percentage": round((busyness_percentage * x.get("count")), 2),
+                                    "profit_percentage": round((profit_percentage * x.get("total_profit", 0)), 2)
+                                }
+                    },
+                    upsert=True
+                )        
+        else:
+            for x in range(0, 24, 1):
+                collection.update_one(
+                    {"_id": x},
+                    {
+                        "$set": {
+                                    "count": 0,
+                                }
+                    },
+                    upsert=True
+                )
+
     except Exception as e:
         tl.exceptions(e)        
 

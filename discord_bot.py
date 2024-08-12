@@ -170,37 +170,59 @@ async def send_statistics_embed():
 
 #function that will embed message for the snipe feed 
 async def create_embed(data):
-    header = data["item_name"]
-    risk = data["market_risk_factor"]
     try:
-        if risk == 0:
-            risk = "Low"
-        elif risk == 1:
-            risk = "Medium"
-        elif risk == 2:
-            risk = "High"
+        header = data.get("item_name", "Unknown Item")
+        risk_factor = data.get("market_risk_factor", 3)
+        buff_sell_num = data.get("buff_item_sell_num", "N/A")
+
+        risk_levels = ["Low", "Medium", "High", "Very High"]
+        risk = f"{risk_levels[min(risk_factor, 3)]} ({buff_sell_num} on sale)"
+
+        buff_discount = data.get("buff_discount", 0)
+        steam_discount = data.get("steam_discount", 0)
+        market_price = data.get("market_price", 0.0)
+        buff_price = data.get("buff_price", 0.0)
+        potential_profit = data.get("profit", [0, 0])[0]
+
+        if buff_discount >= 15:
+            buff_color = "🟩"  
+        elif buff_discount >= 10:
+            buff_color = "🟨"  
+        elif buff_discount >= 6.5:
+            buff_color = "🟧"  
         else:
-            risk = "Very High"
-        risk = risk + " (" + str(data["buff_item_sell_num"]) + " on sale)"
+            buff_color = "🟥"  
 
-        #/ ${data['profit'][1]} (With buff fees)
-        desc = f"**Risk:** `{risk}`\n**Market price:** ${data['market_price']}\n**Buff price:** ${data['buff_price']}\n**Potential profit:** ${data['profit'][0]} \n**Discount:** {data['buff_discount']}% ({round(100-data['buff_discount'], 2)}% Buff) \n\nBuff data was last updated <t:{int(data['buff_data_update_time'].timestamp())}:R>"
 
-        embed = discord.Embed(title=header, description=desc, url=data["market_link"])
-        embed.set_thumbnail(url=data["buff_item_image"])
-        footer_text = data["market_name"]
-        embed.set_footer(text=footer_text, icon_url=cfg["main"]["icons_urls"].get(data["market_name"], ""))
+        desc = (
+            f"**Risk:** `{risk}`\n"
+            f"**Market price:** ${market_price}\n"
+            f"**Buff price:** ${buff_price}\n"
+            f"**Potential profit:** ${potential_profit}\n"
+            f"**Buff discount:** {buff_color} **{buff_discount}%** ({round(100 - buff_discount, 2)}% Buff)"
+        )
+        
+        if steam_discount > buff_discount:
+            desc += f"\n**Steam discount:** {steam_discount}% ({round(100 - steam_discount, 2)}% Steam)"
+        
+        buff_update_time = int(data.get("buff_data_update_time", datetime.now()).timestamp())
+        desc += f"\n\nBuff data was last updated <t:{buff_update_time}:R>"
+
+        embed = discord.Embed(title=header, description=desc, url=data.get("market_link", ""))
+        embed.set_thumbnail(url=data.get("buff_item_image", ""))
+        
+        footer_text = data.get("market_name", "Unknown Market")
+        embed.set_footer(text=footer_text, icon_url=cfg["main"]["icons_urls"].get(data.get("market_name", ""), ""))
+
         return embed
     except Exception as e:
         tl.exceptions(e)
 
 
 
+
 #function that will send newest offer
 async def send_message(data):
-    message = None
-    message_url = None
-    
     if not data:
         return
     
@@ -212,15 +234,17 @@ async def send_message(data):
             channels_data = collection.find_one({"_id": guild.id})
             if not channels_data:
                 continue
-            channel_ids = [
-                channels_data.get("low_channel"),
-                channels_data.get("mid_channel"),
-                channels_data.get("high_channel"),
-                channels_data.get("best_snipes_channel"),
-            ]
-            channels = [bot.get_channel(ch_id) for ch_id in channel_ids if ch_id]
-            if not channels:
-                continue
+
+            low_channel_id = channels_data.get("low_channel")
+            mid_channel_id = channels_data.get("mid_channel")
+            high_channel_id = channels_data.get("high_channel")
+            best_snipes_channel_id = channels_data.get("best_snipes_channel")
+
+            low_channel = bot.get_channel(low_channel_id) if low_channel_id else None
+            mid_channel = bot.get_channel(mid_channel_id) if mid_channel_id else None
+            high_channel = bot.get_channel(high_channel_id) if high_channel_id else None
+            best_snipes_channel = bot.get_channel(best_snipes_channel_id) if best_snipes_channel_id else None
+
             for item in data:
                 embed = await create_embed(item)
                 market_button = discord.ui.Button(label="Check it", style=discord.ButtonStyle.url, url=item["market_link"])
@@ -228,23 +252,23 @@ async def send_message(data):
                 view = discord.ui.View()
                 view.add_item(market_button)
                 view.add_item(buff_button)
+                
                 price = item["market_price"]
-                if price <= cfg["main"]["price_ranges"][0] and len(channels) > 0:
+
+                if price <= cfg["main"]["price_ranges"][0] and low_channel:
                     embed.colour = discord.Colour(cfg["main"]["message_colors"][0])
-                    if channels[0]:
-                        message = await channels[0].send(embed=embed, view=view)
-                elif price < cfg["main"]["price_ranges"][1] and len(channels) > 1:
+                    message = await low_channel.send(embed=embed, view=view)
+                elif price < cfg["main"]["price_ranges"][1] and mid_channel:
                     embed.colour = discord.Colour(cfg["main"]["message_colors"][1])
-                    if channels[1]:
-                        message = await channels[1].send(embed=embed, view=view)
-                elif len(channels) > 2:     
+                    message = await mid_channel.send(embed=embed, view=view)
+                elif high_channel:     
                     embed.colour = discord.Colour(cfg["main"]["message_colors"][2])
-                    if channels[2]:
-                        message = await channels[2].send(embed=embed, view=view)
-                if (item["buff_discount"] >= 10 or item["profit"][1] >= 70) and item["market_risk_factor"] < 2 and item["market_price"] >= 10:
+                    message = await high_channel.send(embed=embed, view=view)
+
+                if (item["buff_discount"] >= 10 or item["profit"][1] >= 70) and item["market_risk_factor"] < 2 and item["market_price"] >= 10 and best_snipes_channel:
                     embed.colour = discord.Colour(cfg["main"]["message_colors"][3])
-                    if len(channels) > 3 and channels[3]:
-                        message = await channels[3].send(embed=embed, view=view)
+                    message = await best_snipes_channel.send(embed=embed, view=view)
+
         except Exception as e:
             tl.exceptions(e)
             continue
@@ -265,7 +289,7 @@ async def message_worker():
             for item in unprocessed_items:
                 collection.update_one({"_id": item["_id"]}, {"$set": {"processed": True}})
                 
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.1)
 
 
 
@@ -279,7 +303,6 @@ async def on_ready():
 
     print(f"Logged on as {bot.user}!")
     
-
 
 
 #check if user is admin
@@ -316,7 +339,7 @@ async def send_info(interaction: discord.Interaction):
 
 
 
-#slash command to add channel into the database
+# Slash command to add a channel into the database
 @bot.tree.command(name="setup_channel", description="Setup snipe bot channels")
 @app_commands.choices(choices=[
     app_commands.Choice(name="Channel for low value snipes", value="low"),
@@ -339,15 +362,38 @@ async def setchannel(interaction: discord.Interaction, choices: app_commands.Cho
     }
     
     field_name = field_map.get(choices.value)
-    if field_name:
-        collection.update_one(
-            {"_id": guild_id},
-            {"$set": {field_name: channel_id}},
-            upsert=True
-        )
-        await interaction.response.send_message(f"Channel <#{channel_id}> has been set up for this server. Snipes will start coming through shortly, so keep an eye out!")
+    
+    # Check bot's permissions in the channel
+    channel = bot.get_channel(channel_id)
+    permissions = channel.permissions_for(channel.guild.me)
+    
+    required_permissions = [
+        permissions.view_channel,
+        permissions.send_messages,
+        permissions.embed_links,
+        permissions.attach_files
+    ]
+    
+    if all(required_permissions):
+        if field_name:
+            collection.update_one(
+                {"_id": guild_id},
+                {"$set": {field_name: channel_id}},
+                upsert=True
+            )
+            await interaction.response.send_message(
+                f"Channel <#{channel_id}> has been successfully set up for this server! "
+                f"Snipes will start rolling in soon, so stay tuned! Also make sure the bot has all the necessary **permissions** to keep things running smoothly."
+            )
+        else:
+            await interaction.response.send_message("Invalid choice.")
     else:
-        await interaction.response.send_message("Invalid choice.")
+        missing_perms = ", ".join([perm[0] for perm in zip(
+            ["View Channel", "Send Messages", "Embed Links", "Attach Files"], required_permissions) if not perm[1]])
+        await interaction.response.send_message(
+            f"Bot is missing the following permissions in <#{channel_id}>: **{missing_perms}**! "
+            f"Please ensure the bot has these permissions and try again. \n\nIf you still have a problem please join our [support server](https://discord.com/invite/csbay-cs2-trading-642813124629757953) and open a ticket."
+        )
 
 
 

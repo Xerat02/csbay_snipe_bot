@@ -5,7 +5,9 @@
   "main": {
     "discord_client_token": "MTEwNDg3MTkxNjk0MDA1MDU0Mg.GM75CV.6WPwQaiAQTUxeVAXpWIsRgikVQHFIJ8UJ7CdSQ",
     "currency_updater_token": "1d437a3b6e16fa0e3043159f07090b2e",
-    "currency_updater_delay": 1000,
+    "currency_updater_delay": 120,
+    "steam_updater_token": "X5F1MIQUZRV9CDTG",
+    "steam_updater_delay": 120,
     "message_send_delay": 0.03,
     "offers_check_delay": 0.005,
     "statistic_message_update_delay": 120,

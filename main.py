@@ -59,6 +59,7 @@ async def process_data(market_array):
                     buff_item_sell_num = buff_row["sell_num"]
                     buff_item_image = buff_row["item_image"]
                     buff_data_update_time = buff_row["update_time"]
+                    steam_price = buff_row["steam_price"]
 
                     if buff_buy_price <= 0 or buff_sell_price <= 0 or market_price <= 0:
                         continue
@@ -80,6 +81,7 @@ async def process_data(market_array):
                     market_price = round(market_price, 2)
                     if market_price < buff_price and buff_price > 0.5:
                         buff_discount = round(((buff_price / market_price) - 1) * 100, 2)
+                        steam_discount = round(((steam_price / market_price) - 1) * 100, 2)
                         profit = [round(buff_price - market_price, 2), round((buff_price * 0.975) - market_price, 2)]
 
                         # Save good items to the database
@@ -92,6 +94,7 @@ async def process_data(market_array):
                                 "buff_price": buff_price,
                                 "market_price": market_price,
                                 "buff_discount": buff_discount,
+                                "steam_discount": steam_discount,
                                 "market_risk_factor": market_risk_factor,
                                 "profit": profit,
                                 "buff_item_sell_num": buff_item_sell_num,
@@ -321,8 +324,22 @@ async def update_total_statistics(profit):
     try:
         market_data = list(collection.find().sort({"max_profit": -1}))
         if len(market_data) > 0:
-            collection = db["snipe_statistic"]
+            # Market last hour count            
+            for value in market_data:
+                last_hour_update_time = value.get("last_hour_update_time")
+                if abs(datetime.now() - last_hour_update_time) > timedelta(hours=1):
+                    collection.update_one(
+                        {"_id": value.get("_id")},
+                        {
+                            "$set": {
+                                        "last_hour_count": value.get("count", 0),
+                                        "last_hour_update_time": datetime.now()
+                                    }
+                        },
+                        upsert=True
+                    )   
 
+            # Total market stats
             count = 0
             hour_count = 0
             average = 0
@@ -337,6 +354,7 @@ async def update_total_statistics(profit):
                 last_hour_count = last_hour_count + value.get("last_hour_count", 0)
             average = round(average / len(market_data), 2)
 
+            collection = db["snipe_statistic"]
             collection.update_one(
                 {"_id": "All markets"},
                 {
@@ -352,21 +370,6 @@ async def update_total_statistics(profit):
                 },
                 upsert=True
             )
-
-            # Market last hour count            
-            for value in market_data:
-                last_hour_update_time = value.get("last_hour_update_time")
-                if abs(datetime.now() - last_hour_update_time) > timedelta(hours=1):
-                    collection.update_one(
-                        {"_id": value.get("_id")},
-                        {
-                            "$set": {
-                                        "last_hour_count": value.get("count", 0),
-                                        "last_hour_update_time": datetime.now()
-                                    }
-                        },
-                        upsert=True
-                    )    
 
         # Hour time stats
         collection = db["snipe_statistic_hour_data"]
@@ -463,13 +466,47 @@ async def currency_updater():
         except Exception as e:
             tl.exceptions(e)  
         finally:
-             await asyncio.sleep(cfg["main"]["currency_updater_delay"])   
+             await asyncio.sleep(cfg["main"]["currency_updater_delay"])
+
+
+
+#functions that every 4h update steam prices
+async def steam_updater():
+    while True:
+        collection = db["buff_items"]
+        token = cfg["main"]["steam_updater_token"]
+        try:
+            last_update = collection.find_one({}, sort=[("steam_update_time", -1)])
+            current_time = datetime.now()
+            if not last_update or (current_time - last_update.get("steam_update_time", datetime.min)) > timedelta(hours=4):
+                data = await tl.fetch(f"https://www.steamwebapi.com/steam/api/items?key={token}", proxy=False, timeout=300)
+                if data:
+                    for obj in data:
+                        market_hash_name = obj.get("markethashname")
+                        steam_price = obj.get("pricelatest")
+
+                        if not market_hash_name or steam_price is None:
+                            continue
+                        
+                        collection.update_one(
+                            {"market_hash_name": market_hash_name},
+                            {
+                                "$set": {
+                                    "steam_price": steam_price,
+                                    "steam_update_time": current_time,
+                                }
+                            },
+                        )
+        except Exception as e:
+            tl.exceptions(e)
+        finally:
+            await asyncio.sleep(cfg["main"]["steam_updater_delay"])
 
 
 
 #run scripts
 async def main():
-    await asyncio.gather(latest_offers(),currency_updater())
+    await asyncio.gather(latest_offers(),currency_updater(), steam_updater())
 
 
 

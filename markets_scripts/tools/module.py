@@ -99,7 +99,7 @@ cfg = cfg_load("config")
 
 
 
-async def fetch(url, headers=None, cookies=None, json_format=None, mode=1, response_format="json", proxy=True, method="get", params=None):
+async def fetch(url, headers=None, cookies=None, json_format=None, mode=1, response_format="json", proxy=True, method="get", params=None, timeout=15):
     retries = 3  # Increase retries for better fault tolerance
     headers = headers or {}
     proxy_url = "http://hhocrsgo-rotate:g84uej4uz8ug@p.webshare.io:80/" if proxy else None
@@ -110,9 +110,9 @@ async def fetch(url, headers=None, cookies=None, json_format=None, mode=1, respo
             async with aiohttp.ClientSession() as session:
                 response = None
                 if method == "get":
-                    response = await session.get(url, proxy=proxy_url, headers=headers, timeout=15, cookies=cookies, json=json_format, params=params)
+                    response = await session.get(url, proxy=proxy_url, headers=headers, timeout=timeout, cookies=cookies, json=json_format, params=params)
                 elif method == "post":
-                    response = await session.post(url, proxy=proxy_url, headers=headers, timeout=15, cookies=cookies, json=json_format, params=params)
+                    response = await session.post(url, proxy=proxy_url, headers=headers, timeout=timeout, cookies=cookies, json=json_format, params=params)
                 
                 response.raise_for_status()
                 text = await response.text()

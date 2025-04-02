@@ -1,13 +1,14 @@
 import asyncio
 import aiohttp
 import logging
+import json
 import tools.module as tl
 
 
 
 async def getdata():
     try:
-        new_skins = set()
+        new_skins = []
         data = await tl.fetch("https://loot.farm/botsInventory_730.json")
         wears = {
             "FN": "(Factory New)",
@@ -23,14 +24,17 @@ async def getdata():
                     if "e" in obj and obj["e"] in wears:
                         name += " " + wears[obj["e"]]
                     price = str(float(obj["p"]) / 100)
-                    link = "https://loot.farm/#skin=730_" + name
-                    new_skins.add((name, price, link, "Lootfarm"))
+                    link = "https://loot.farm/#skin=730_" + name.replace(" ", "%20")
+                    skin_data = {
+                        "name": name,
+                        "price": price,
+                        "link": link,
+                        "source": "Lootfarm"
+                    }
+                    new_skins.append(skin_data)
 
-
-            with open("textFiles/lootfarm.txt", "w", encoding="utf-8") as f:
-                for skin in new_skins:
-                    f.write(skin[0] + ";" + skin[1] + ";" + skin[2]+ ";" + skin[3] + "\n")
-                    await asyncio.sleep(0.06)
+            with open("textFiles/lootfarm.json", "w", encoding="utf-8") as f:
+                json.dump(new_skins, f, indent=4, ensure_ascii=False)
     except Exception as e:
         print(e)
  

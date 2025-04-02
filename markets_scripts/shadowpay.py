@@ -36,14 +36,20 @@ async def start():
 
                                 offers = parsed_data["result"]["data"]["data"]["offers"]
                                 for obj in offers:
-                                    name = str(obj["steam_market_hash_name"])
-                                    price = str(float(obj["price"]))
-                                    link = f"https://shadowpay.com/item/{obj['id']}?utm_campaign=f3YuZpNRuWRk8Gx"
-                                    items.append(f"{name};{price};{link};Shadowpay")
+                                    skin_data = {
+                                        "name": str(obj["steam_market_hash_name"]),
+                                        "price": round(float(obj["price"]), 2),
+                                        "link": f"https://shadowpay.com/item/{obj['id']}?utm_campaign=f3YuZpNRuWRk8Gx",
+                                        "source": "Shadowpay"
+                                    }
+                                    if len(obj["stickers"]) > 0:
+                                        sticker_names = [sticker["steam_market_hash_name"] for sticker in obj["stickers"]]
+                                        skin_data["stickers"] = sticker_names
+                                    items.append(skin_data)
                         except json.JSONDecodeError as e:
                             logging.error(f"JSON decode error: {e}")
             except websockets.exceptions.ConnectionClosed as e:
-                tl.exceptions(e)
+                logging.error(f"Connection closed: {e}")
                 break
             except Exception as e:
                 logging.error(f"An error occurred: {e}")
@@ -54,12 +60,11 @@ async def write_to_file():
     while True:
         try:
             if items:
-                data_to_write = "\n".join(items)
-                with open("textFiles/shadowpay.txt", "w", encoding="utf-8") as file:
-                    file.write(data_to_write + "\n")
+                with open("textFiles/shadowpay.json", "w", encoding="utf-8") as file:
+                    json.dump(items, file, ensure_ascii=False, indent=4)
                 items.clear()
                 logging.debug("Data successfully written to the file.")
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
         except Exception as e:
             logging.error("Error occurred during writing data: %s", e)
 

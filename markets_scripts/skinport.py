@@ -1,5 +1,6 @@
 import socketio
 import asyncio
+import json
 import logging
 
 
@@ -13,10 +14,23 @@ sio = socketio.AsyncClient(ssl_verify=True)
 @sio.on('saleFeed')
 async def on_sale_feed(result):
     try:
-        name = str(result["sales"][0]["marketHashName"])
-        price = str(result["sales"][0]["salePrice"] / 100)
-        link = "https://skinport.com/item/" + result["sales"][0]["url"] + "/" + str(result["sales"][0]["saleId"])
-        skins.append(name + ";" + price + ";" + link + ";Skinport")
+        sale = result["sales"][0]
+        name = str(sale["marketHashName"])
+        price = round(sale["salePrice"] / 100, 2)
+        link = f"https://skinport.com/item/{sale['url']}/{sale['saleId']}"
+        
+        skin_data = {
+            "name": name,
+            "price": price,
+            "link": link,
+            "source": "Skinport"
+        }
+        if "stickers" in sale:
+            print("test")
+            if len(sale["stickers"]) > 0:
+                sticker_names = [sticker["name"] for sticker in sale["stickers"]]
+                skin_data["stickers"] = sticker_names
+        skins.append(skin_data)
     except Exception as e:
         logging.error("Error occurred during getting data: %s", e)
         await sio.disconnect()
@@ -27,12 +41,11 @@ async def write_to_file():
     while True:
         try:
             if skins:
-                data_to_write = "\n".join(skins)
-                with open("textFiles/skinport.txt", "w", encoding="utf-8") as file:
-                    file.write(data_to_write + "\n")
+                with open("textFiles/skinport.json", "w", encoding="utf-8") as file:
+                    json.dump(skins, file, ensure_ascii=False, indent=4)
                 skins.clear()
                 logging.debug("Data successfully written to the file.")
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
         except Exception as e:
             logging.error("Error occurred during writing data: %s", e)
 

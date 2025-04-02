@@ -1,29 +1,33 @@
 import asyncio
 import aiohttp
 import logging
+import json
 import tools.module as tl
 
 
 
 async def getdata():
     try:
-        new_skins = set()
+        new_skins = []
         data = await tl.fetch("https://api.dmarket.com/exchange/v1/market/items?side=market&orderBy=updated&orderDir=desc&title=&priceFrom=0&priceTo=0&treeFilters=&gameId=a8db&types=dmarket&cursor=&limit=100&currency=USD&platform=browser")
         if data:
             for obj in data["objects"]:
-                name = str(obj["title"])
-                price = str(float(obj["price"]["USD"])/100)
-                link = "https://dmarket.com/ingame-items/item-list/csgo-skins?ref=y9l2rUxEFC&userOfferId="+obj["extra"]["linkId"]
-                new_skins.add((name, price, link, "Dmarket"))
+                skin_data = {
+                    "name": str(obj["title"]),
+                    "price": str(float(obj["price"]["USD"]) / 100),
+                    "link": "https://dmarket.com/ingame-items/item-list/csgo-skins?ref=y9l2rUxEFC&userOfferId=" + obj["extra"]["linkId"],
+                    "source": "Dmarket"
+                }
+                extra = obj.get("extra")
+                if "stickers" in extra:
+                    sticker_names = [sticker["name"] for sticker in extra["stickers"]]
+                    skin_data["stickers"] = sticker_names
+                new_skins.append(skin_data)
 
-
-            with open("textFiles/dmarket.txt", "w", encoding="utf-8") as f:
-                for skin in new_skins:
-                    f.write(skin[0] + ";" + skin[1] + ";" + skin[2]+ ";" + skin[3] + "\n")
-                    await asyncio.sleep(0.06)
+            with open("textFiles/dmarket.json", "w", encoding="utf-8") as f:
+                json.dump(new_skins, f, indent=4, ensure_ascii=False)
     except Exception as e:
-        print(e)
- 
+        tl.exceptions(e)
 
 
 async def main():
@@ -33,7 +37,7 @@ async def main():
         except Exception as e:
             print(e)
         finally:
-            await asyncio.sleep(6)
+            await asyncio.sleep(3)
 
 
 

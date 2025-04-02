@@ -118,29 +118,31 @@ payload = {
 import asyncio
 import aiohttp
 import logging
+import json
 import tools.module as tl
 
 
 
 async def getdata():
     try:
-        new_skins = set()
+        new_skins = []
         data = await tl.fetch("https://api.white.market/graphql/api", json_format=payload)
         if data:
-          for obj in data["data"]["market_list"]["edges"]:
-              node = obj["node"]
-              name = str(node["item"]["description"]["nameHash"]).strip()
-              price = str(float(node["price"]["value"]))
-              link = f"https://white.market/item/{node['slug']}"
-              new_skins.add((name, price, link, "WhiteMarket"))
+            for obj in data["data"]["market_list"]["edges"]:
+                node = obj["node"]
+                skin_data = {
+                    "name": str(node["item"]["description"]["nameHash"]).strip(),
+                    "price": str(float(node["price"]["value"])),
+                    "link": f"https://white.market/item/{node['slug']}",
+                    "source": "WhiteMarket"
+                }
+                new_skins.append(skin_data)
 
-          with open("textFiles/whitemarket.txt", "w", encoding="utf-8") as f:
-              for skin in new_skins:
-                  f.write(skin[0] + ";" + skin[1] + ";" + skin[2]+ ";" + skin[3] + "\n")
-                  await asyncio.sleep(0.06)
+            with open("textFiles/whitemarket.json", "w", encoding="utf-8") as f:
+                json.dump(new_skins, f, indent=4, ensure_ascii=False)
     except Exception as e:
         print(e)
- 
+
 
 
 async def main():

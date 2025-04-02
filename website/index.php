@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
   <head>
+    <?php include "components/analytics.php";?>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CSBAY Sniper</title>
@@ -37,44 +38,8 @@
 
     <link href="src/output.css" rel="stylesheet" />
   </head>
-  <body
-    class="bg-[#08090A] text-white w-[90%] lg:max-w-[1240px] mx-auto pt-10 font-unbuntu overflow-x-hidden space-y-24 py-24"
-  >
-    <!--Header section-->
-    <header
-      class="shadow-[0_20px_50px_rgba(106,_160,_238,_0.2)] backdrop-blur-lg z-10 lg:sticky lg:top-12 flex flex-row items-center justify-center lg:justify-between text-[18px] border-2 border-[#272c31] p-5 rounded-2xl bg-[#181b1ed0]"
-    >
-      <div class="flex flex-row">
-        <img
-        src="media/csbay_logo_icon.jpg"
-        alt="CSBAY logo icon"
-        class="mr-2 w-[50px] rounded-2xl"
-        />
-        <img
-        src="media/csbay_logo.png"
-        alt="CSBAY logo"
-        />
-      </div>
-      <nav class="lg:flex flex-row hidden">
-        <a class="mr-5" href="#features">Features</a>
-        <a class="mr-5" href="#how_it_works">How it works</a>
-        <a class="mr-5" href="#supported_marketplaces">Markets</a>
-        <a class="mr-5" href="#faq">FAQ</a>
-        <a href="setup.html">Setup</a>
-      </nav>
-      <a
-          href="https://discord.com/oauth2/authorize?client_id=1104871916940050542&scope=bot&permissions=277025507328"
-          target="_blank"
-          class="hidden lg:flex justify-center items-center w-full lg:w-max px-6 py-2 bg-gradient-to-tr from-[#2655FD] to-[#4D62FB] rounded-2xl font-bold hover:scale-105 transition-all active::animate-ping"
-        >
-        <span class="mr-5 text-[12px] lg:text-[18px]">Add to Discord</span>
-        <img
-          src="media/discord_icon.png"
-          alt="Discord icon"
-          class="h-[40px] w-[40px]"
-        />
-      </a>
-    </header>
+  <body class="bg-[#08090A] text-white font-unbuntu overflow-x-hidden">
+    <?php include "components/header.php";?>
     <!--Hero section-->
     <section>
       <div class="flex flex-col lg:flex-row justify-between items-center my-6">
@@ -553,11 +518,9 @@
         </div>
       </div>
     </section>
-    <footer
-      class="w-full text-[12px] text-center"
-    >
-        © 2024 CSBAY. All rights reserved.
-    </footer>
+    <?php include "components/footer.php";?>
+    </div>
+
 
     <script src="https://unpkg.com/scrollreveal"></script>
     <script>
@@ -592,8 +555,20 @@
           behavior: "smooth",
         });
       }
-
+      
       setInterval(autoScroll, 20);
+
+      function mobile_nav(){
+        const NAV = document.getElementById("mobile_menu");
+        if (NAV.classList.contains("hidden")){
+          NAV.classList.remove("hidden")
+          NAV.classList.add("flex")
+        }
+        else {
+          NAV.classList.add("hidden")
+          NAV.classList.remove("flex")
+        }
+      }
     </script>
   </body>
 </html>

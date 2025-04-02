@@ -41,13 +41,23 @@ async def start():
                     inner_data = json.loads(parsed_data['data'])
 
                     name = str(inner_data['i_market_hash_name'])
-                    price = str(round(((float(inner_data["ui_price"]))*cur_rate),3))
-                    market_hash_name = str(inner_data["i_market_hash_name"]).replace(" ","%20")
-                    link = "https://market.csgo.com/en/Agent/"+market_hash_name+"?id="+inner_data['ui_id']
-                    items.append(f"{name};{price};{link};Marketcsgo")
+                    price = round(float(inner_data["ui_price"]) * cur_rate, 3)
+                    market_hash_name = str(inner_data["i_market_hash_name"]).replace(" ", "%20")
+                    link = f"https://market.csgo.com/en/Agent/{market_hash_name}?id={inner_data['ui_id']}"
+                    skin_data = {
+                        "name": name,
+                        "price": price,
+                        "link": link,
+                        "source": "Marketcsgo"
+                    }
+                    items.append(skin_data)
             except websockets.exceptions.ConnectionClosed:
-                print("Connection with server closed")
+                logging.warning("Connection with server closed")
                 break
+            except json.JSONDecodeError as e:
+                logging.error("Error decoding JSON: %s", e)
+            except Exception as e:
+                logging.error("Unexpected error: %s", e)
 
 
 
@@ -55,14 +65,15 @@ async def write_to_file():
     while True:
         try:
             if items:
-                data_to_write = "\n".join(items)
-                with open("textFiles/marketcsgo.txt", "w", encoding="utf-8") as file:
-                    file.write(data_to_write + "\n")
+                with open("textFiles/marketcsgo.json", "w", encoding="utf-8") as file:
+                    json.dump(items, file, ensure_ascii=False, indent=4)
                 items.clear()
                 logging.debug("Data successfully written to the file.")
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
         except Exception as e:
             logging.error("Error occurred during writing data: %s", e)
+
+
 
 async def main():
     while True:

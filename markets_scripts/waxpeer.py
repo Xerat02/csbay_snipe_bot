@@ -1,5 +1,6 @@
 import socketio
 import asyncio
+import json
 import logging
 
 
@@ -14,12 +15,19 @@ sio = socketio.AsyncClient(ssl_verify=True)
 async def on_add_item(data):
     try:
         name = str(data['name'])
-        link_name = name.lower().replace("★","").replace("™","").replace("(","").replace(")","").replace(" ","-")
-        price = str(round((float(data['price'])/1000),2))
+        link_name = name.lower().replace("★", "").replace("™", "").replace("(", "").replace(")", "").replace(" ", "-")
+        price = round(float(data['price']) / 1000, 2)
         if "★" in name:
             link_name = link_name[1:]
-        link = "https://waxpeer.com/"+link_name+"/item/"+str(data['item_id'])
-        items.append(f"{name};{price};{link};Waxpeer")
+        link = f"https://waxpeer.com/{link_name}/item/{data['item_id']}"
+        
+        item = {
+            "name": name,
+            "price": price,
+            "link": link,
+            "source": "Waxpeer"
+        }
+        items.append(item)
     except Exception as e:
         logging.error("Error occurred during getting data: %s", e)
         await sio.disconnect()
@@ -30,9 +38,8 @@ async def write_to_file():
     while True:
         try:
             if items:
-                data_to_write = "\n".join(items)
-                with open("textFiles/waxpeer.txt", "w", encoding="utf-8") as file:
-                    file.write(data_to_write + "\n")
+                with open("textFiles/waxpeer.json", "w", encoding="utf-8") as file:
+                    json.dump(items, file, ensure_ascii=False, indent=4)
                 items.clear()
                 logging.debug("Data successfully written to the file.")
             await asyncio.sleep(2)

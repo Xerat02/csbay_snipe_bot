@@ -1,7 +1,7 @@
 import asyncio
 import discord
 import tools.module as tl
-from pymongo import MongoClient, UpdateOne
+from pymongo import MongoClient, UpdateOne, DeleteOne
 from datetime import datetime, timedelta
 from discord.ext import commands
 from discord import app_commands
@@ -11,7 +11,7 @@ from discord import app_commands
 # discord
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix=".",intents=intents)
+bot = commands.AutoShardedBot(shard_count=5, command_prefix=".",intents=intents)
 
 
 
@@ -79,9 +79,9 @@ async def send_statistics_embed():
                     # Embed 1: Market Statistics
                     embed1 = discord.Embed(title="Market Statistics", color=discord.Color.blue())
 
-                    embed1.add_field(name=f"{all_markets_stats.get('_id')}", value=f"📚 Recorded snipes: {all_markets_stats.get('count')} (*+{all_markets_stats.get('count') - all_markets_stats.get('last_hour_count')} last hour*)\n🔖 Average Discount: {all_markets_stats.get('average')}%\n💵 Max recorded profit: ${all_markets_stats.get('max_profit')} ([Jump]({all_markets_stats.get('message_url')}))", inline=False)
+                    embed1.add_field(name=f"{all_markets_stats.get('_id')}", value=f"📚 Recorded snipes: {all_markets_stats.get('count')} (*+{all_markets_stats.get('count') - all_markets_stats.get('last_hour_count')} last hour*)\n🔖 Average Discount: {all_markets_stats.get('average')}%\n💵 Max recorded profit: ${all_markets_stats.get('max_profit')} ([Link]({all_markets_stats.get('message_url')}))", inline=False)
                     for row in data:
-                        embed1.add_field(name=f"{row.get('_id')}", value=f"📚 Recorded snipes: {row.get('count')} (*+{row.get('count') - row.get('last_hour_count')} last hour*)\n🔖 Average Discount: {row.get('average')}%\n💵 Max recorded profit: ${row.get('max_profit')} ([Jump]({row.get('message_url')}))", inline=False)
+                        embed1.add_field(name=f"{row.get('_id')}", value=f"📚 Recorded snipes: {row.get('count')} (*+{row.get('count') - row.get('last_hour_count')} last hour*)\n🔖 Average Discount: {row.get('average')}%\n💵 Max recorded profit: ${row.get('max_profit')} ([Link]({row.get('message_url')}))", inline=False)
 
                     embed1.add_field(name="", value=f"Last updated: <t:{int(now.timestamp())}:R>")
 
@@ -111,7 +111,7 @@ async def send_statistics_embed():
                             x = time_frame / 10080
                             time_frame = remove_trailing_zeros(str(x)) + " w"     
 
-                        embed2.add_field(name=f"The best snipe in {time_frame}:", value=f"Market: {row.get('market')}\nPotencial profit: ${row.get('potencial_profit')} ([Jump]({row.get('message_url')}))\nDiscount: {row.get('discount')}%", inline=False)
+                        embed2.add_field(name=f"The best snipe in {time_frame}:", value=f"Market: {row.get('market')}\nPotencial profit: ${row.get('potencial_profit')} ([Link]({row.get('message_url')}))\nDiscount: {row.get('discount')}%", inline=False)
 
                     embed2.add_field(name="", value=f"Last updated: <t:{int(now.timestamp())}:R>")
 
@@ -193,7 +193,6 @@ async def create_embed(data):
         else:
             buff_color = "🟥"  
 
-
         desc = (
             f"**Risk:** `{risk}`\n"
             f"**Market price:** ${market_price}\n"
@@ -204,6 +203,12 @@ async def create_embed(data):
         
         if steam_discount > buff_discount:
             desc += f"\n**Steam discount:** {steam_discount}% ({round(100 - steam_discount, 2)}% Steam)"
+        
+        if "stickers" in data:
+            stickers = data["stickers"]
+            if isinstance(stickers, list):
+                sticker_list = "\n".join(f"{i+1}. {sticker}" for i, sticker in enumerate(stickers))
+                desc += f"\n\n**Stickers:**\n{sticker_list}"
         
         buff_update_time = int(data.get("buff_data_update_time", datetime.now()).timestamp())
         desc += f"\n\nBuff data was last updated <t:{buff_update_time}:R>"
@@ -219,16 +224,13 @@ async def create_embed(data):
         tl.exceptions(e)
 
 
-
-
-#function that will send newest offer
-async def send_message(data):
-    if not data:
+async def send_message(item):
+    if not item:
         return
-    
+
     guilds = bot.guilds
+    coroutines = []
     for guild in guilds:
-        try:
             print(f"Processing guild: {guild.name}")
             collection = db["snipe_discord_channels"]
             channels_data = collection.find_one({"_id": guild.id})
@@ -240,56 +242,93 @@ async def send_message(data):
             high_channel_id = channels_data.get("high_channel")
             best_snipes_channel_id = channels_data.get("best_snipes_channel")
 
-            low_channel = bot.get_channel(low_channel_id) if low_channel_id else None
-            mid_channel = bot.get_channel(mid_channel_id) if mid_channel_id else None
-            high_channel = bot.get_channel(high_channel_id) if high_channel_id else None
-            best_snipes_channel = bot.get_channel(best_snipes_channel_id) if best_snipes_channel_id else None
+            def get_channel_if_accessible(channel_id):
+                channel = bot.get_channel(channel_id) if channel_id else None
+                if channel and channel.permissions_for(guild.me).send_messages:
+                    return channel
+                return None
 
-            for item in data:
-                embed = await create_embed(item)
-                market_button = discord.ui.Button(label="Check it", style=discord.ButtonStyle.url, url=item["market_link"])
-                buff_button = discord.ui.Button(label="Buff price", style=discord.ButtonStyle.url, url=item["buff_item_link"])
-                view = discord.ui.View()
-                view.add_item(market_button)
-                view.add_item(buff_button)
-                
-                price = item["market_price"]
+            low_channel = get_channel_if_accessible(low_channel_id)
+            mid_channel = get_channel_if_accessible(mid_channel_id)
+            high_channel = get_channel_if_accessible(high_channel_id)
+            best_snipes_channel = get_channel_if_accessible(best_snipes_channel_id)
 
-                if price <= cfg["main"]["price_ranges"][0] and low_channel:
-                    embed.colour = discord.Colour(cfg["main"]["message_colors"][0])
-                    message = await low_channel.send(embed=embed, view=view)
-                elif price < cfg["main"]["price_ranges"][1] and mid_channel:
-                    embed.colour = discord.Colour(cfg["main"]["message_colors"][1])
-                    message = await mid_channel.send(embed=embed, view=view)
-                elif high_channel:     
-                    embed.colour = discord.Colour(cfg["main"]["message_colors"][2])
-                    message = await high_channel.send(embed=embed, view=view)
+            embed = await create_embed(item)
+            market_button = discord.ui.Button(label="Check it", style=discord.ButtonStyle.url, url=item["market_link"])
+            buff_button = discord.ui.Button(label="Buff price", style=discord.ButtonStyle.url, url=item["buff_item_link"])
+            view = discord.ui.View()
+            view.add_item(market_button)
+            view.add_item(buff_button)
 
-                if (item["buff_discount"] >= 10 or item["profit"][1] >= 70) and item["market_risk_factor"] < 2 and item["market_price"] >= 10 and best_snipes_channel:
-                    embed.colour = discord.Colour(cfg["main"]["message_colors"][3])
-                    message = await best_snipes_channel.send(embed=embed, view=view)
+            price = item["market_price"]
 
-        except Exception as e:
-            tl.exceptions(e)
-            continue
+            if price <= cfg["main"]["price_ranges"][0] and low_channel:
+                embed.colour = discord.Colour(cfg["main"]["message_colors"][0])
+                coroutines.append(low_channel.send(embed=embed, view=view))
+            elif price < cfg["main"]["price_ranges"][1] and mid_channel:
+                embed.colour = discord.Colour(cfg["main"]["message_colors"][1])
+                coroutines.append(mid_channel.send(embed=embed, view=view))
+            elif high_channel:
+                embed.colour = discord.Colour(cfg["main"]["message_colors"][2])
+                coroutines.append(high_channel.send(embed=embed, view=view))
+
+            if (item["buff_discount"] >= 10 or item["profit"][1] >= 70) and item["market_risk_factor"] < 2 and item["market_price"] >= 10 and best_snipes_channel:
+                embed.colour = discord.Colour(cfg["main"]["message_colors"][3])
+                coroutines.append(best_snipes_channel.send(embed=embed, view=view))
+
+    try:
+        await asyncio.gather(*coroutines)
+    except Exception as e:
+        tl.exceptions(e)
+        return
+
+    db["snipe_processed_items"].update_one({"_id": item["_id"]}, {"$set": {"processed": True}})
 
 
-#function that read data from database to get the newest snipe offers
-async def message_worker():
+
+# Function that read data from database to get the newest snipe offers
+async def data_worker():
     collection = db["snipe_processed_items"]
-    
     while not bot.is_closed():
-        # Fetch unprocessed items
         unprocessed_items = list(collection.find({"processed": {"$ne": True}}))
-        if unprocessed_items:
-            # Send message with unprocessed items
-            await send_message(data=unprocessed_items)
-            
-            # Mark these items as processed
+        if len(unprocessed_items) > 0:
             for item in unprocessed_items:
-                collection.update_one({"_id": item["_id"]}, {"$set": {"processed": True}})
-                
-        await asyncio.sleep(0.1)
+                await send_message(item)
+                await asyncio.sleep(1)
+        else:
+            await asyncio.sleep(3)        
+
+
+
+# Function that will store all guild information
+async def store_guild_info():
+    while True:
+        collection = db["snipe_discord_channels"]
+        
+        current_guild_ids = set(guild["_id"] for guild in collection.find())
+        
+        for guild in bot.guilds:
+            collection.update_one(
+                {"_id": guild.id},
+                {
+                    "$set": {
+                        "info": {
+                            "name": guild.name,
+                            "member_count": guild.member_count,
+                            "icon": str(guild.icon.with_size(256)) if guild.icon else None,
+                            "server_link": guild.vanity_url
+                        }
+                    }
+                },
+                upsert=True
+            )
+            if guild.id in current_guild_ids:
+                current_guild_ids.remove(guild.id)
+
+        for guild_id in current_guild_ids:
+            collection.delete_one({"_id": guild_id})
+        
+        await asyncio.sleep(5)
 
 
 
@@ -297,10 +336,9 @@ async def message_worker():
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    activity = discord.Activity(type=discord.ActivityType.watching, name="csbay.net/sniper")
+    activity = discord.Activity(type=discord.ActivityType.watching, name="csbay.org")
     await bot.change_presence(activity=activity)
-    await asyncio.gather(message_worker(), send_statistics_embed())
-
+    await asyncio.gather(data_worker(), send_statistics_embed(), store_guild_info())
     print(f"Logged on as {bot.user}!")
     
 

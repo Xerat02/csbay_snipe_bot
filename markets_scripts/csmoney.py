@@ -1,25 +1,35 @@
 import asyncio
 import aiohttp
 import logging
+import json
 import tools.module as tl
 
 
 
 async def getdata():
     try:
-        new_skins = set()
+        new_skins = []
         data = await tl.fetch("https://cs.money/1.0/market/sell-orders?limit=60&offset=0&order=desc&sort=insertDate")
         if data:
             for obj in data["items"]:
-                name = str(obj["asset"]["names"]["full"])
-                price = str(float(obj["pricing"]["default"]))
-                link = "https://cs.money/market/buy?sort=price&order=asc&search="+name
-                new_skins.add((name, price, link, "CSMoney"))
+                skin_data = {
+                    "name": str(obj["asset"]["names"]["full"]),
+                    "price": str(float(obj["pricing"]["default"])),
+                    "link": "https://cs.money/market/buy?sort=price&order=asc&search=" + obj["asset"]["names"]["full"],
+                    "source": "CSMoney"
+                }
+                if "stickers" in obj:
+                    if obj["stickers"]:
+                        sticker_names = []
+                        for sticker in obj["stickers"]:
+                            if sticker:
+                                sticker_names.append(sticker["name"])
+                        skin_data["stickers"] = sticker_names
+                new_skins.append(skin_data)
+                new_skins.append(skin_data)
 
-            with open("textFiles/csmoney.txt", "w", encoding="utf-8") as f:
-                for skin in new_skins:
-                    f.write(skin[0] + ";" + skin[1] + ";" + skin[2]+ ";" + skin[3] + "\n")
-                    await asyncio.sleep(0.06)
+            with open("textFiles/csmoney.json", "w", encoding="utf-8") as f:
+                json.dump(new_skins, f, indent=4, ensure_ascii=False)
     except Exception as e:
         print(e)
  

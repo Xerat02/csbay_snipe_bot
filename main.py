@@ -6,7 +6,6 @@
 #
 ####################################
 
-import aiomysql
 import aiohttp
 import asyncio
 import shutil
@@ -14,6 +13,9 @@ import os
 import re
 import unicodedata
 import tools.module as tl
+import json
+import time 
+import threading
 from datetime import datetime, timedelta
 from collections import deque
 from pymongo import MongoClient, UpdateOne
@@ -33,19 +35,20 @@ db = mongo_client["csbay"]
 
 
 # Main function that processes new offers and saves them into the database
-async def process_data(market_array):
+def process_data(market_array):
     try:
         collection = db["buff_items"]
 
         for market_row in market_array:
-            market_row = market_row.split(";")
-            
             if len(market_row) > 1:
                 market_risk_factor = 0
-                market_skin_name = str(market_row[0])
-                market_price = float(market_row[1])
-                market_item_link = market_row[2].replace(" ", "%20")
-                market_name = market_row[3]
+                market_skin_name = str(market_row["name"])
+                market_price = float(market_row["price"])
+                market_item_link = market_row["link"].replace(" ", "%20")
+                market_name = market_row["source"]
+                market_stickers = None
+                if market_row.get("stickers"):
+                    market_stickers = market_row.get("stickers")
                 
                 search_name = tl.preprocess_string(market_skin_name)
                 buff_row = collection.find_one({"search_name": search_name})
@@ -85,12 +88,13 @@ async def process_data(market_array):
                         profit = [round(buff_price - market_price, 2), round((buff_price * 0.975) - market_price, 2)]
 
                         # Save good items to the database
-                        if buff_discount < 220 and ((buff_discount > 4 and profit[0] > 0.5) or profit[0] > 30):
+                        if buff_discount < 220 and ((buff_discount > 4 and profit[0] > 1) or profit[0] > 30):
                             item_data = {
                                 "_id": market_item_link + str(market_price) + str(buff_discount),  
                                 "item_name": buff_skin_name,
                                 "market_name": market_name,
                                 "market_link": market_item_link,
+                                "market_logo": cfg["main"]["icons_urls"].get(market_name, ""),
                                 "buff_price": buff_price,
                                 "market_price": market_price,
                                 "buff_discount": buff_discount,
@@ -103,10 +107,12 @@ async def process_data(market_array):
                                 "buff_data_update_time": buff_data_update_time,
                                 "inserted_time": datetime.now()
                             }
+                            if market_stickers:
+                                item_data["stickers"] = market_stickers
                             try:
                                 db["snipe_processed_items"].insert_one(item_data)
                                 print(item_data)
-                                await update_statistics(item_name=buff_skin_name, market_name=market_name, discount=buff_discount, profit=profit, message_url=market_item_link)
+                                update_statistics(item_name=buff_skin_name, market_name=market_name, discount=buff_discount, profit=profit, message_url=market_item_link)
                             except DuplicateKeyError:
                                 pass
                 else:
@@ -123,47 +129,51 @@ async def process_data(market_array):
 
 
 # Function to read data from market script files and execute process_data function with that data
-async def process_file(filename):
-    temp_folder = cfg["main"]["temp_files_location"]
-    if not os.path.exists(temp_folder):
-        os.makedirs(temp_folder)
-    base_name = os.path.basename(filename)
-    temp_filename = os.path.join(temp_folder, "temp_" + base_name)
-    shutil.copy(filename, temp_filename)
-    try:
-        with open(temp_filename, "r", encoding="utf-8") as file:
-            item_array = file.read().split("\n")
-            if item_array and item_array[0]:
-                await process_data(item_array)
-                with open(filename, "w", encoding="utf-8") as file:
-                    pass            
-    except Exception as e:
-        tl.exceptions(e)  
-    finally:               
-        os.remove(temp_filename)
+def process_file(filename):
+    while True:
+        start_time = time.time()
+        temp_folder = cfg["main"]["temp_files_location"]
+        if not os.path.exists(temp_folder):
+            os.makedirs(temp_folder)
+        base_name = os.path.basename(filename)
+        temp_filename = os.path.join(temp_folder, "temp_" + base_name)
+        shutil.copy(filename, temp_filename)
+        try:
+            with open(temp_filename, "r", encoding="utf-8") as file:
+                item_array = file.read()
+                if item_array:
+                    process_data(json.loads(item_array))
+                    with open(filename, "w", encoding="utf-8") as file:
+                        pass            
+        except Exception as e:
+            print(filename)
+            tl.exceptions(e)  
+        finally:               
+            os.remove(temp_filename)
+            if time.time() - start_time < 1:
+                time.sleep(0.2)
+            #print(filename)
 
 
 
 # Function to run process data function in threads
 async def latest_offers():
     try:
-        while True:
-            tasks = [process_file(os.path.join("textFiles", filename)) for filename in cfg["main"]["files"]]
-            await asyncio.gather(*tasks)
-            await asyncio.sleep(cfg["main"]["offers_check_delay"])
+        for filename in cfg["main"]["files"]:
+            thread = threading.Thread(target=process_file, args=(f"textFiles/{filename}",))
+            thread.start()
     except Exception as e:
         tl.exceptions(e)
 
 
 
 #function that updating individual markets statistics
-async def update_statistics(item_name, market_name, discount, profit, message_url):
+def update_statistics(item_name, market_name, discount, profit, message_url):
     collection = db["snipe_statistic_market_data"]
     new_count = None  
     new_average = None  
     new_max_profit = None
     
-    await asyncio.sleep(2)
     try:
         data = collection.find_one({"_id": market_name})
 
@@ -254,7 +264,6 @@ async def update_statistics(item_name, market_name, discount, profit, message_ur
                         upsert=True
                     )
 
-                    await asyncio.sleep(0.07)
 
                 if time_frame_data.get("potencial_profit", 0) < profit[0]:
                     collection.update_one(
@@ -313,14 +322,13 @@ async def update_statistics(item_name, market_name, discount, profit, message_ur
     except Exception as e:
         tl.exceptions(e)
     finally:
-        await update_total_statistics(profit[0])
+        update_total_statistics(profit[0])
 
 
 
 #function that updating total markets statistics
-async def update_total_statistics(profit):
+def update_total_statistics(profit):
     collection = db["snipe_statistic_market_data"]
-    await asyncio.sleep(2)
     try:
         market_data = list(collection.find().sort({"max_profit": -1}))
         if len(market_data) > 0:

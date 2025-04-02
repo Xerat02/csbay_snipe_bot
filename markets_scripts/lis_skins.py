@@ -4,6 +4,7 @@ from selenium_stealth import stealth
 import random
 import asyncio
 import csv
+import json
 import tools.module as tl
 
 
@@ -56,10 +57,8 @@ async def convert_currency():
 async def getdata():
     await convert_currency()
     try:
-        # Initialize the WebDriver
         driver = webdriver.Chrome(options=options)
 
-        # Enable stealth mode
         stealth(driver,
                 languages=["en-US", "en"],
                 vendor="Google Inc.",
@@ -82,7 +81,7 @@ async def getdata():
         price_elements = soup.find_all(class_="price")
         for element in price_elements:
             price_text = element.get_text(strip=True)
-            PRICE_LIST.append(str(float(price_text.replace("€","").replace(" ",""))*cur_rate))
+            PRICE_LIST.append(float(price_text.replace("€","").replace(" ","")) * cur_rate)
 
         name_elements = soup.find_all('a', class_='name')
         for element in name_elements:
@@ -94,15 +93,21 @@ async def getdata():
 
         link_elements = soup.find_all(class_="name", href=True)
         for element in link_elements:
-            LINK_LIST.append(element["href"]+"?rf=1302230")
+            LINK_LIST.append(element["href"] + "?rf=1302230")
 
-        new_skins = set(zip(NAME_LIST, PRICE_LIST, LINK_LIST))
+        new_skins = []
+        for name, price, link in zip(NAME_LIST, PRICE_LIST, LINK_LIST):
+            skin = {
+                "name": name,
+                "price": round(price, 2),
+                "link": link,
+                "source": "Lis-skins"
+            }
+            new_skins.append(skin)
 
+        with open("textFiles/lis_skins.json", "w", encoding="utf-8") as f:
+            json.dump(new_skins, f, ensure_ascii=False, indent=4)
 
-        with open("textFiles/lis_skins.txt", "w", encoding="utf-8") as f:
-            for name, price, link in new_skins:
-                f.write(f"{name};{price};{link};Lis-skins\n")
-                await asyncio.sleep(0.06)
     except Exception as e:
         print(e)
     finally:

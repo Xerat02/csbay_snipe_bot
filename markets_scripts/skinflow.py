@@ -1,29 +1,30 @@
 import asyncio
 import aiohttp
 import logging
+import json
 import tools.module as tl
 
 
 
 async def getdata():
     try:
-        new_skins = set()
+        new_skins = []
         data = await tl.fetch("https://api.skinflow.gg/bots/items/trade?sort_by=date_received")
         if data:
             for obj in data["results"]:
-                name = str(obj["market_hash_name"])
-                price = str(float(obj["offered"])/100)
-                link = "https://skinflow.gg/buy?search="+name
-                new_skins.add((name, price, link, "Skinflow"))
+                skin_data = {
+                    "name": str(obj["market_hash_name"]),
+                    "price": str(float(obj["offered"])/100),
+                    "link": "https://skinflow.gg/buy?referral=CSBAY&search=" + str(obj["market_hash_name"]),
+                    "source": "SkinBid"
+                }
+                new_skins.append(skin_data)
 
-
-            with open("textFiles/skinflow.txt", "w", encoding="utf-8") as f:
-                for skin in new_skins:
-                    f.write(skin[0] + ";" + skin[1] + ";" + skin[2]+ ";" + skin[3] + "\n")
-                    await asyncio.sleep(0.06)
+            with open("textFiles/skinflow.json", "w", encoding="utf-8") as f:
+                json.dump(new_skins, f, indent=4, ensure_ascii=False)
     except Exception as e:
         print(e)
- 
+
 
 
 async def main():
@@ -33,7 +34,7 @@ async def main():
         except Exception as e:
             print(e)
         finally:
-            await asyncio.sleep(6)
+            await asyncio.sleep(12)
 
 
 

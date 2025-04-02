@@ -3,7 +3,7 @@
     "uri": "mongodb://192.168.88.16:27017/"
   },
   "main": {
-    "discord_client_token": "MTEwNDg3MTkxNjk0MDA1MDU0Mg.GM75CV.6WPwQaiAQTUxeVAXpWIsRgikVQHFIJ8UJ7CdSQ",
+    "discord_client_token": "-",
     "currency_updater_token": "1d437a3b6e16fa0e3043159f07090b2e",
     "currency_updater_delay": 120,
     "steam_updater_token": "X5F1MIQUZRV9CDTG",
